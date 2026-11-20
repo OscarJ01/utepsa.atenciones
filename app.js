@@ -74,6 +74,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // =========================================================================
     const state = {
       currentUser: null, // { name, email, role, uid }
+      channelAtencion: 'plataforma',
       activeTab: 'registro',
       records: [], // Todos los registros sincronizados (Firestore o sesión activa)
       selectedProcedures: new Set(),
@@ -97,6 +98,22 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       latestAttendanceLookup: { key: '', promise: null },
       latestAttendanceRequestId: 0
     };
+
+    function normalizeStudentCodeInput(value) {
+      let code = '';
+      for (const character of String(value).toUpperCase()) {
+        if (/\d/.test(character) && code.length < 6 && !code.endsWith('A')) {
+          code += character;
+        } else if (character === 'A' && code.length === 5) {
+          code += character;
+        }
+      }
+      return code;
+    }
+
+    function isValidStudentCode(value) {
+      return /^(?:\d{6}|\d{5}A)$/.test(value);
+    }
 
     // =========================================================================
     // 3. INICIALIZACIÓN Y GESTIÓN DE FIREBASE (REGLAS 1, 2 Y 3)
@@ -205,6 +222,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
               observaciones: data.observaciones || '',
               asesor: data.asesor || 'Oscar Vargas',
               asesorUid: data.asesorUid || '',
+              canalAtencion: data.canalAtencion === 'wati' ? 'wati' : 'plataforma',
               createdAt: Number.isFinite(data.createdAt) ? data.createdAt : 0,
               createdAtServer: data.createdAtServer || null,
               pendingSync: docSnap.metadata.hasPendingWrites
@@ -383,7 +401,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     async function syncLatestAttendanceSummaries(records) {
       const summariesByStudent = new Map();
       records.forEach((record) => {
-        if (record.pendingSync || !/^\d{6}$/.test(record.registro)) return;
+        if (record.pendingSync || !isValidStudentCode(record.registro)) return;
         const current = summariesByStudent.get(record.registro);
         if (
           !current
@@ -632,6 +650,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
     function enterApplication(user) {
       state.currentUser = user;
+      state.channelAtencion = 'plataforma';
+      updateChannelModeUI();
       updateReportAdvisorsHeading();
       state.firebase.summaryBackfillStarted = false;
       document.getElementById('login-screen').classList.add('hidden');
@@ -693,6 +713,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
             updateFirebaseStatusUI(false, state.firebase.app?.options.projectId, true);
           }
           state.currentUser = null;
+          state.channelAtencion = 'plataforma';
+          updateChannelModeUI();
           state.records = [];
           state.latestAttendanceLookup = { key: '', promise: null };
           state.latestAttendanceRequestId += 1;
@@ -733,6 +755,36 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         renderTodayFeed();
         document.getElementById('entry-registro')?.focus();
       }
+    };
+
+    function updateChannelModeUI() {
+      const control = document.getElementById('channel-mode-control');
+      const button = document.getElementById('channel-mode-toggle');
+      const indicator = document.getElementById('channel-mode-indicator');
+      const label = document.getElementById('channel-mode-label');
+      if (!control || !button || !indicator || !label) return;
+
+      const canChooseChannel = ['Asesor', 'Administrador'].includes(state.currentUser?.role);
+      const isWati = state.channelAtencion === 'wati';
+      control.classList.toggle('hidden', !canChooseChannel);
+      label.textContent = isWati ? 'WATI' : 'Plataforma';
+      button.setAttribute('aria-checked', String(isWati));
+      button.setAttribute(
+        'aria-label',
+        `Canal de atención: ${isWati ? 'WATI' : 'Plataforma'}`
+      );
+      button.className = isWati
+        ? 'inline-flex items-center gap-2 px-2.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold border bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 transition'
+        : 'inline-flex items-center gap-2 px-2.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold border bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 transition';
+      indicator.className = isWati
+        ? 'w-2.5 h-2.5 rounded-full bg-emerald-500'
+        : 'w-2.5 h-2.5 rounded-full bg-slate-400';
+    }
+
+    window.toggleChannelMode = function () {
+      if (!['Asesor', 'Administrador'].includes(state.currentUser?.role)) return;
+      state.channelAtencion = state.channelAtencion === 'wati' ? 'plataforma' : 'wati';
+      updateChannelModeUI();
     };
 
     // =========================================================================
@@ -916,12 +968,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     window.handleStudentCodeInput = function (rawVal) {
       const requestId = ++state.latestAttendanceRequestId;
       const input = document.getElementById('entry-registro');
-      const clean = rawVal.replace(/\D/g, '').slice(0, 6);
+      const clean = normalizeStudentCodeInput(rawVal);
       input.value = clean;
       document.getElementById('registro-char-counter').textContent = `${clean.length}/6`;
 
       const alertBox = document.getElementById('repeat-alert-box');
-      if (clean.length < 6) {
+      if (!isValidStudentCode(clean)) {
         alertBox.classList.add('hidden');
         return;
       }
@@ -1024,17 +1076,23 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
     };
 
+    window.handleEditStudentCodeInput = function (rawVal) {
+      document.getElementById('edit-registro').value = normalizeStudentCodeInput(rawVal);
+    };
+
     window.handleSaveRecord = async function (e) {
       e.preventDefault();
-      const registro = document.getElementById('entry-registro').value.trim();
+      const registroInput = document.getElementById('entry-registro');
+      const registro = normalizeStudentCodeInput(registroInput.value);
+      registroInput.value = registro;
       const fecha = state.currentUser?.role === 'Administrador'
         ? document.getElementById('entry-fecha').value || getTodayISO()
         : getTodayISO();
       const observaciones = document.getElementById('entry-observaciones').value.trim().toUpperCase();
 
-      if (!/^\d{6}$/.test(registro)) {
-        showToast('Ingrese un código de registro válido de 6 dígitos numéricos.', 'error');
-        document.getElementById('entry-registro').focus();
+      if (!isValidStudentCode(registro)) {
+        showToast('Ingrese 6 dígitos o 5 dígitos seguidos de la letra A.', 'error');
+        registroInput.focus();
         return;
       }
 
@@ -1058,6 +1116,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         observaciones: observaciones || 'INFORMACION',
         asesor: advisorName,
         asesorUid: state.currentUser.uid,
+        canalAtencion: state.channelAtencion,
         createdAt: Date.now(),
         createdAtServer: serverTimestamp()
       };
@@ -1252,6 +1311,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
                 }">${escapeHtml(rec.registro)}</span>
                 ${isRepeat ? '<span class="text-[10px] font-extrabold text-orange-600 uppercase">Re-consulta</span>' : ''}
                 ${rec.pendingSync ? '<span class="text-[10px] font-extrabold text-amber-700 uppercase">Pendiente de sincronizar</span>' : ''}
+                <span class="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
+                  rec.canalAtencion === 'wati'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-100 text-slate-600'
+                }">${rec.canalAtencion === 'wati' ? 'WATI' : 'Plataforma'}</span>
                 <span class="text-[11px] text-slate-400 truncate">• ${escapeHtml(rec.observaciones || '-')}</span>
               </div>
               <div class="flex flex-wrap gap-1 mt-1.5">
@@ -1382,7 +1446,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       if (pageSlice.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="16" class="py-12 text-center text-slate-500">
+            <td colspan="17" class="py-12 text-center text-slate-500">
               No se encontraron registros que coincidan con los filtros seleccionados.
             </td>
           </tr>
@@ -1415,6 +1479,13 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
               </td>
               ${procCells}
               <td class="py-2.5 px-3 font-medium text-slate-700 border-r border-slate-100 max-w-[220px] truncate" title="${escapeHtml(rec.observaciones || '')}">${escapeHtml(rec.observaciones || '-')}</td>
+              <td class="py-2.5 px-3 border-r border-slate-100">
+                <span class="px-2 py-1 rounded-md text-[10px] font-bold ${
+                  rec.canalAtencion === 'wati'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-slate-100 text-slate-600'
+                }">${rec.canalAtencion === 'wati' ? 'WATI' : 'Plataforma'}</span>
+              </td>
               <td class="py-2.5 px-3 text-slate-600 font-semibold border-r border-slate-100">${escapeHtml(rec.asesor)}</td>
               <td class="py-2.5 px-3 text-center">
                 <div class="inline-flex items-center gap-1">
@@ -1509,16 +1580,19 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
       const canEditStudentCode = state.currentUser?.role === 'Administrador';
       const registro = canEditStudentCode
-        ? document.getElementById('edit-registro').value.trim()
+        ? normalizeStudentCodeInput(document.getElementById('edit-registro').value)
         : existingRecord.registro;
       const fecha = state.currentUser?.role === 'Administrador'
         ? document.getElementById('edit-fecha').value
         : existingRecord.fecha;
       const observaciones = document.getElementById('edit-observaciones').value.trim().toUpperCase();
 
-      if (!/^\d{6}$/.test(registro)) {
-        showToast('El código de registro debe tener 6 dígitos.', 'error');
+      if (!isValidStudentCode(registro)) {
+        showToast('Ingrese 6 dígitos o 5 dígitos seguidos de la letra A.', 'error');
         return;
+      }
+      if (canEditStudentCode) {
+        document.getElementById('edit-registro').value = registro;
       }
       if (!fecha) {
         showToast('La fecha de atención es obligatoria.', 'error');
@@ -1614,6 +1688,23 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const filteredRecords = getFilteredReportRecords(selectedAdvisor);
 
       const totalAttentions = filteredRecords.length;
+      const watiAttentions = filteredRecords.filter((record) => record.canalAtencion === 'wati').length;
+      const platformAttentions = totalAttentions - watiAttentions;
+      const platformPct = totalAttentions > 0
+        ? Math.round((platformAttentions / totalAttentions) * 100)
+        : 0;
+      const watiPct = totalAttentions > 0
+        ? Math.round((watiAttentions / totalAttentions) * 100)
+        : 0;
+
+      document.getElementById('kpi-channel-platform-count').textContent =
+        platformAttentions.toLocaleString('es-BO');
+      document.getElementById('kpi-channel-platform-pct').textContent = `${platformPct}%`;
+      document.getElementById('kpi-channel-platform-bar').style.width = `${platformPct}%`;
+      document.getElementById('kpi-channel-wati-count').textContent =
+        watiAttentions.toLocaleString('es-BO');
+      document.getElementById('kpi-channel-wati-pct').textContent = `${watiPct}%`;
+      document.getElementById('kpi-channel-wati-bar').style.width = `${watiPct}%`;
 
       // Meta mensual (1,000 - 1,500 por asesor; escalable si es vista global de varios asesores)
       const uniqueAdvisorsInPeriod = new Set(periodAllRecords.map((r) => r.asesor));
@@ -1925,7 +2016,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
 
       const headers = [
-        'FECHA', 'REGISTRO',
+        'FECHA', 'REGISTRO', 'CANAL',
         ...PROCEDURES.map((p) => p.label),
         'OBSERVACIONES', 'ASESOR'
       ];
@@ -1935,6 +2026,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         const line = [
           formatDateDisplay(r.fecha),
           r.registro,
+          r.canalAtencion === 'wati' ? 'WATI' : 'PLATAFORMA',
           ...PROCEDURES.map((p) => (r.tramites?.[p.key] ? 'X' : '')),
           `"${(r.observaciones || '').replace(/"/g, '""')}"`,
           `"${(r.asesor || '').replace(/"/g, '""')}"`
@@ -1968,6 +2060,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           <tr>
             <td style="text-align:center;border:1px solid #D9D9D9;">${escapeHtml(formatDateDisplay(r.fecha))}</td>
             <td style="text-align:center;border:1px solid #D9D9D9;${regBg}">${escapeHtml(r.registro)}</td>
+            <td style="text-align:center;border:1px solid #D9D9D9;">${r.canalAtencion === 'wati' ? 'WATI' : 'PLATAFORMA'}</td>
             ${procCols}
             <td style="border:1px solid #D9D9D9;">${escapeHtml(r.observaciones || '')}</td>
             <td style="border:1px solid #D9D9D9;">${escapeHtml(r.asesor || '')}</td>
@@ -1983,11 +2076,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
             <tr>
               <td colspan="4" style="font-size:16px;font-weight:bold;color:#C8102E;">UTEPSA - UNIVERSIDAD TECNOLÓGICA PRIVADA DE SANTA CRUZ</td>
               <td colspan="7" style="text-align:center;font-weight:bold;color:#C8102E;">"UN GRAN PODER CONLLEVA UNA GRAN RESPONSABILIDAD"</td>
-              <td colspan="4" style="text-align:right;font-weight:bold;color:#C8102E;">${escapeHtml(advisorTitle.toUpperCase())}</td>
+              <td colspan="5" style="text-align:right;font-weight:bold;color:#C8102E;">${escapeHtml(advisorTitle.toUpperCase())}</td>
             </tr>
             <tr style="background-color:#C8102E;color:#FFFFFF;font-weight:bold;text-align:center;">
               <th style="border:1px solid #9E0B22;padding:6px;">FECHA</th>
               <th style="border:1px solid #9E0B22;padding:6px;">REGISTRO</th>
+              <th style="border:1px solid #9E0B22;padding:6px;">CANAL</th>
               ${PROCEDURES.map((p) => `<th style="border:1px solid #9E0B22;padding:6px;">${p.label}</th>`).join('')}
               <th style="border:1px solid #9E0B22;padding:6px;">OBSERVACIONES</th>
               <th style="border:1px solid #9E0B22;padding:6px;">ASESOR</th>
