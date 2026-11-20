@@ -532,13 +532,13 @@
           <div class="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3 text-xs text-slate-600">
               <span id="pagination-info" class="font-semibold">Mostrando 0 de 0 registros</span>
-              <select id="pagination-size" onchange="resetHistoryPageAndRender()" class="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-semibold text-xs">
-                <option value="25">25 / pág</option>
-                <option value="50" selected>50 / pág</option>
-                <option value="100">100 / pág</option>
-              </select>
-            </div>
-
+                <select id="pagination-size" onchange="resetHistoryPageAndRender()" class="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-semibold text-xs">
+                  <option value="10" selected>10 / pág</option>
+                  <option value="25">25 / pág</option>
+                  <option value="50">50 / pág</option>
+                  <option value="100">100 / pág</option>
+                 </select>
+                 
             <div class="flex items-center gap-1.5">
               <button type="button" onclick="changeHistoryPage('first')" id="btn-page-first" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold disabled:opacity-40">«</button>
               <button type="button" onclick="changeHistoryPage('prev')" id="btn-page-prev" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold disabled:opacity-40">Anterior</button>
