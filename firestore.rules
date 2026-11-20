@@ -36,6 +36,15 @@ service cloud.firestore {
       return hasAdvisorProfile();
     }
 
+    function validStudentCode(studentCode) {
+      return studentCode is string
+        && studentCode.matches('^([0-9]{6}|[0-9]{5}A)$');
+    }
+
+    function validAttendanceChannel(channel) {
+      return channel == 'plataforma' || channel == 'wati';
+    }
+
     function currentSummaryRecordPath(appId) {
       return /databases/$(database)/documents/artifacts/$(appId)/public/data/atenciones/$(resource.data.recordId);
     }
@@ -45,7 +54,8 @@ service cloud.firestore {
     }
 
     function validSummaryShape(studentCode) {
-      return request.resource.data.keys().hasAll([
+      return validStudentCode(studentCode)
+        && request.resource.data.keys().hasAll([
           'registro',
           'asesor',
           'asesorUid',
@@ -75,7 +85,8 @@ service cloud.firestore {
     }
 
     function validAdvisorSummaryShape(appId, studentCode) {
-      return request.resource.data.keys().hasAll([
+      return validStudentCode(studentCode)
+        && request.resource.data.keys().hasAll([
           'registro',
           'asesor',
           'fecha',
@@ -119,15 +130,29 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (isAdvisor() && resource.data.asesorUid == request.auth.uid);
 
-      allow create: if isAdmin()
-        || (
-          isAdvisor()
-          && request.resource.data.asesorUid == request.auth.uid
-          && request.resource.data.asesor == get(userProfilePath()).data.nombre
-          && request.resource.data.createdAtServer == request.time
+      allow create: if validStudentCode(request.resource.data.registro)
+        && (
+          !request.resource.data.keys().hasAny(['canalAtencion'])
+          || validAttendanceChannel(request.resource.data.canalAtencion)
+        )
+        && (
+          isAdmin()
+          || (
+            isAdvisor()
+            && request.resource.data.asesorUid == request.auth.uid
+            && request.resource.data.asesor == get(userProfilePath()).data.nombre
+            && request.resource.data.createdAtServer == request.time
+          )
         );
 
-      allow update: if isAdmin()
+      allow update: if (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['registro'])
+        || validStudentCode(request.resource.data.registro)
+      ) && (
+        !request.resource.data.keys().hasAny(['canalAtencion'])
+        || validAttendanceChannel(request.resource.data.canalAtencion)
+      ) && (
+        isAdmin()
         || (
           isAdvisor()
           && resource.data.asesorUid == request.auth.uid
@@ -135,7 +160,8 @@ service cloud.firestore {
           && request.resource.data.asesor == get(userProfilePath()).data.nombre
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['tramites', 'observaciones'])
-        );
+        )
+      );
 
       allow delete: if isAdmin();
     }
@@ -158,7 +184,7 @@ service cloud.firestore {
     }
 
     match /artifacts/{appId}/public/data/ultimaAtencionAsesores/{studentCode} {
-      allow get: if studentCode.matches('^[0-9]{6}$') && (isAdmin() || isAdvisor());
+      allow get: if validStudentCode(studentCode) && (isAdmin() || isAdvisor());
       allow list: if isAdmin();
 
       allow create: if (isAdmin() || isAdvisor())
