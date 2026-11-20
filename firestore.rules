@@ -1,0 +1,185 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userProfilePath() {
+      return /databases/$(database)/documents/usuarios/$(request.auth.uid);
+    }
+
+    function hasAdminProfile() {
+      return signedIn()
+        && exists(userProfilePath())
+        && get(userProfilePath()).data.rol == 'Administrador'
+        && get(userProfilePath()).data.email == request.auth.token.email;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && (
+          request.auth.token.email == 'oscarjunior0327@gmail.com'
+          || hasAdminProfile()
+        );
+    }
+
+    function hasAdvisorProfile() {
+      return signedIn()
+        && exists(userProfilePath())
+        && get(userProfilePath()).data.rol == 'Asesor'
+        && get(userProfilePath()).data.email == request.auth.token.email;
+    }
+
+    function isAdvisor() {
+      return hasAdvisorProfile();
+    }
+
+    function currentSummaryRecordPath(appId) {
+      return /databases/$(database)/documents/artifacts/$(appId)/public/data/atenciones/$(resource.data.recordId);
+    }
+
+    function advisorSummaryRecordPath(appId) {
+      return /databases/$(database)/documents/artifacts/$(appId)/public/data/atenciones/$(request.resource.data.recordId);
+    }
+
+    function validSummaryShape(studentCode) {
+      return request.resource.data.keys().hasAll([
+          'registro',
+          'asesor',
+          'asesorUid',
+          'fecha',
+          'mesAnio',
+          'createdAt',
+          'createdAtServer',
+          'recordId'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'registro',
+          'asesor',
+          'asesorUid',
+          'fecha',
+          'mesAnio',
+          'createdAt',
+          'createdAtServer',
+          'recordId'
+        ])
+        && request.resource.data.registro == studentCode
+        && request.resource.data.asesor is string
+        && request.resource.data.asesorUid is string
+        && request.resource.data.fecha is string
+        && request.resource.data.mesAnio is string
+        && request.resource.data.createdAtServer is timestamp
+        && request.resource.data.recordId is string;
+    }
+
+    function validAdvisorSummaryShape(appId, studentCode) {
+      return request.resource.data.keys().hasAll([
+          'registro',
+          'asesor',
+          'fecha',
+          'createdAtServer',
+          'recordId'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'registro',
+          'asesor',
+          'fecha',
+          'createdAtServer',
+          'recordId'
+        ])
+        && request.resource.data.registro == studentCode
+        && request.resource.data.asesor is string
+        && request.resource.data.fecha is string
+        && request.resource.data.createdAtServer is timestamp
+        && request.resource.data.recordId is string
+        && existsAfter(advisorSummaryRecordPath(appId))
+        && getAfter(advisorSummaryRecordPath(appId)).data.registro == studentCode
+        && getAfter(advisorSummaryRecordPath(appId)).data.asesor == request.resource.data.asesor
+        && getAfter(advisorSummaryRecordPath(appId)).data.fecha == request.resource.data.fecha
+        && (
+          isAdmin()
+          || (
+            getAfter(advisorSummaryRecordPath(appId)).data.asesorUid == request.auth.uid
+            && getAfter(advisorSummaryRecordPath(appId)).data.createdAtServer is timestamp
+            && getAfter(advisorSummaryRecordPath(appId)).data.createdAtServer
+              == request.resource.data.createdAtServer
+          )
+        );
+    }
+
+    match /usuarios/{userId} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /artifacts/{appId}/public/data/atenciones/{recordId} {
+      allow read: if isAdmin()
+        || (isAdvisor() && resource.data.asesorUid == request.auth.uid);
+
+      allow create: if isAdmin()
+        || (
+          isAdvisor()
+          && request.resource.data.asesorUid == request.auth.uid
+          && request.resource.data.asesor == get(userProfilePath()).data.nombre
+          && request.resource.data.createdAtServer == request.time
+        );
+
+      allow update: if isAdmin()
+        || (
+          isAdvisor()
+          && resource.data.asesorUid == request.auth.uid
+          && request.resource.data.asesorUid == request.auth.uid
+          && request.resource.data.asesor == get(userProfilePath()).data.nombre
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['tramites', 'observaciones'])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /artifacts/{appId}/public/data/ultimaAtencion/{studentCode} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+
+      allow create: if isAdmin() && validSummaryShape(studentCode);
+
+      allow update: if isAdmin()
+          && validSummaryShape(studentCode)
+          && (
+            request.resource.data.recordId == resource.data.recordId
+            || request.resource.data.createdAtServer > resource.data.createdAtServer
+            || !exists(currentSummaryRecordPath(appId))
+          );
+
+      allow delete: if isAdmin();
+    }
+
+    match /artifacts/{appId}/public/data/ultimaAtencionAsesores/{studentCode} {
+      allow get: if studentCode.matches('^[0-9]{6}$') && (isAdmin() || isAdvisor());
+      allow list: if isAdmin();
+
+      allow create: if (isAdmin() || isAdvisor())
+        && validAdvisorSummaryShape(appId, studentCode);
+
+      allow update: if validAdvisorSummaryShape(appId, studentCode)
+        && (
+          isAdmin()
+          || (
+            isAdvisor()
+            && (
+              request.resource.data.createdAtServer > resource.data.createdAtServer
+              || (
+                request.resource.data.createdAtServer == resource.data.createdAtServer
+                && request.resource.data.recordId > resource.data.recordId
+              )
+            )
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+  }
+}
