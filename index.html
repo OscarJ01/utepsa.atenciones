@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ATENCIÓN UTEPSA SAE | Gestión y Reporte Mensual</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="./tailwind.config.js"></script>
+  <!-- Chart.js para gráficos interactivos de reportes mensuales -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Fuente Institucional Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-[#C8102E] selection:text-white">
+
+  <!-- ===================================================================== -->
+  <!-- CONTENEDOR DE NOTIFICACIONES TOAST (Reemplaza cualquier alert/confirm) -->
+  <!-- ===================================================================== -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0 no-print"></div>
+
+  <!-- ===================================================================== -->
+  <!-- 1. PANTALLA DE LOGIN INSTITUCIONAL UTEPSA                             -->
+  <!-- ===================================================================== -->
+  <section id="login-screen" class="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-slate-100 via-slate-50 to-red-50/40">
+    <div class="w-full max-w-5xl bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden grid grid-cols-1 lg:grid-cols-12 animate-fade-in">
+      
+      <!-- Panel Izquierdo Institucional UTEPSA -->
+      <div class="lg:col-span-5 bg-gradient-to-br from-[#C8102E] via-[#B00D27] to-[#8A081D] text-white p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden">
+        <!-- Marca de agua geométrica estrella UTEPSA -->
+        <svg class="absolute -right-16 -bottom-16 w-80 h-80 opacity-10 pointer-events-none" viewBox="0 0 200 200" fill="none">
+          <polygon points="100,8 115.7,56.8 159.1,29.5 139.8,77 190.6,84 145.3,108 179.7,146 129.6,135.2 131.5,186.5 100,146 68.5,186.5 70.4,135.2 20.3,146 54.7,108 9.4,84 60.2,77 40.9,29.5 84.3,56.8" fill="#FFFFFF" />
+        </svg>
+
+        <div class="relative z-10">
+          <div class="flex items-center gap-4 mb-8">
+            <div class="bg-white p-2.5 rounded-2xl shadow-md">
+              <img src="./logo-utepsa.png" alt="Logo UTEPSA" class="w-12 h-12 object-contain" />
+            </div>
+            <div>
+              <span class="block text-2xl font-black tracking-tight leading-none">UTEPSA</span>
+              <span class="block text-[11px] font-medium text-red-100 tracking-wider uppercase mt-1">Servicios de Atención Estudiantil</span>
+            </div>
+          </div>
+
+          <h1 class="text-2xl sm:text-3xl font-extrabold leading-tight mb-3">
+            Plataforma de Gestión y Reporte Mensual SAE
+          </h1>
+          <p class="text-sm text-red-100 leading-relaxed mb-6">
+            Digitaliza y acelera el registro diario de atenciones estudiantiles con control automático de re-consultas y reportes estadísticos en tiempo real.
+          </p>
+
+          <div class="bg-black/20 backdrop-blur-sm border border-white/15 rounded-2xl p-4 mb-6">
+            <p class="text-sm font-semibold text-white">Nuestra misión: Educar para Emprender y Servir</p>
+          </div>
+        </div>
+
+        <div class="relative z-10 space-y-2.5 text-xs text-red-100 border-t border-white/15 pt-5">
+          <div class="flex items-center gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-white">✓</span>
+            <span>Gestión</span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-white">✓</span>
+            <span>Re-consultas</span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center font-bold text-white">✓</span>
+            <span>Exportación</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel Derecho: Formulario de Autenticación -->
+      <div class="lg:col-span-7 p-8 sm:p-10 flex flex-col justify-between bg-white">
+        <div>
+          <!-- Encabezado y Estado de Conexión -->
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
+            <div>
+              <h2 class="text-xl font-bold text-slate-800">Acceso al Sistema</h2>
+              <p class="text-xs text-slate-500">Ingrese con el correo autorizado para el sistema</p>
+            </div>
+            <div id="login-fb-badge" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+              <span id="login-fb-dot" class="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span id="login-fb-text">Sin conexión con Firebase</span>
+            </div>
+          </div>
+
+          <!-- Formulario de Acceso Institucional -->
+          <form id="login-form" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+            <div class="grid grid-cols-1 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Correo electrónico</label>
+                <input type="email" id="auth-email" required placeholder="usuario@correo.com" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#C8102E] focus:border-[#C8102E] transition" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Contraseña</label>
+              <input type="password" id="auth-password" required placeholder="••••••••" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#C8102E] focus:border-[#C8102E] transition" />
+            </div>
+
+            <button type="submit" id="auth-submit-btn" class="w-full py-3 px-4 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white font-bold text-sm shadow-md shadow-red-600/20 transition flex items-center justify-center gap-2">
+              <span>Ingresar al Sistema UTEPSA SAE</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+            </button>
+          </form>
+
+        </div>
+
+        <div class="mt-8 pt-4 border-t border-slate-100 text-xs text-slate-500">
+          <span>Universidad Tecnológica Privada de Santa Cruz - Gestión 2026</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- 2. APLICACIÓN PRINCIPAL (DASHBOARD + REGISTRO + HISTORIAL)            -->
+  <!-- ===================================================================== -->
+  <div id="app-shell" class="hidden min-h-screen flex-col">
+
+    <!-- Encabezado Exclusivo para Impresión Ejecutiva -->
+    <div class="hidden print-only border-b-2 border-[#C8102E] pb-4 mb-6">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <img src="./logo-utepsa.png" alt="Logo UTEPSA" class="w-12 h-12 object-contain" />
+          <div>
+            <h1 class="text-xl font-black text-[#C8102E]">UTEPSA - SERVICIOS DE ATENCIÓN ESTUDIANTIL (SAE)</h1>
+            <p class="text-xs text-slate-600 font-semibold">Reporte Ejecutivo Mensual de Atenciones y Trámites Estudiantiles</p>
+          </div>
+        </div>
+        <div class="text-right text-xs text-slate-600">
+          <p id="print-meta-period" class="font-bold text-slate-900">Periodo: -</p>
+          <p id="print-meta-advisor">Asesor: -</p>
+          <p id="print-meta-date">Generado: -</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de Navegación Superior Institucional -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm no-print">
+      <div class="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+        
+        <!-- Logo y Título Institucional -->
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2.5">
+            <img src="./logo-utepsa.png" alt="Logo UTEPSA" class="w-9 h-9 shrink-0 object-contain" />
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="font-black text-lg tracking-tight text-[#C8102E]">UTEPSA</span>
+                <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#63666A] text-white rounded-md">SAE</span>
+              </div>
+              <p class="hidden xl:block text-[10px] text-slate-400 font-medium">Educar para Emprender y Servir</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navegación Principal de Pestañas -->
+        <nav class="hidden md:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/70">
+          <button type="button" onclick="switchTab('registro')" id="nav-tab-registro" class="px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-[#C8102E] text-white shadow-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            <span>Registro Rápido</span>
+          </button>
+          <button type="button" onclick="switchTab('historial')" id="nav-tab-historial" class="px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 text-slate-600 hover:text-slate-900">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25"/></svg>
+            <span>Historial</span>
+            <span id="nav-count-badge" class="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-200 text-slate-700 font-extrabold">0</span>
+          </button>
+          <button type="button" onclick="switchTab('reportes')" id="nav-tab-reportes" class="px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 text-slate-600 hover:text-slate-900">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+            <span>Reporte Mensual y KPIs</span>
+          </button>
+        </nav>
+
+        <!-- Perfil de Usuario, Estado de Conexión y Salir -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <div title="Estado de conexión con Firebase" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+            <span id="header-fb-dot" class="w-2 h-2 rounded-full bg-amber-500"></span>
+            <span id="header-fb-text">Local</span>
+          </div>
+
+          <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+            <div class="w-7 h-7 rounded-lg bg-[#C8102E] text-white font-bold text-xs flex items-center justify-center uppercase" id="user-avatar-initials">OV</div>
+            <div class="hidden sm:block leading-tight">
+              <p id="header-user-name" class="text-xs font-bold text-slate-800">Oscar Vargas</p>
+              <p id="header-user-role" class="text-[10px] font-semibold text-[#63666A] uppercase">Asesor SAE</p>
+            </div>
+          </div>
+
+          <button type="button" onclick="confirmLogout()" title="Cerrar Sesión" class="p-2 rounded-xl text-slate-500 hover:text-[#C8102E] hover:bg-red-50 transition border border-transparent hover:border-red-100">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de Navegación Móvil -->
+      <div class="md:hidden grid grid-cols-3 border-t border-slate-200 bg-slate-50">
+        <button type="button" onclick="switchTab('registro')" id="mob-tab-registro" class="py-2.5 text-xs font-bold text-[#C8102E] border-b-2 border-[#C8102E] bg-white">
+          + Registro
+        </button>
+        <button type="button" onclick="switchTab('historial')" id="mob-tab-historial" class="py-2.5 text-xs font-bold text-slate-600">
+          Historial
+        </button>
+        <button type="button" onclick="switchTab('reportes')" id="mob-tab-reportes" class="py-2.5 text-xs font-bold text-slate-600">
+          Reportes KPI
+        </button>
+      </div>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 py-6">
+
+      <!-- ================================================================= -->
+      <!-- VISTA A: REGISTRO RÁPIDO DE ATENCIÓN                              -->
+      <!-- ================================================================= -->
+      <section id="view-registro" class="space-y-6 animate-fade-in">
+        
+        <!-- Barra Superior de Progreso Diario y Mensual del Asesor -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Atendidos Hoy</p>
+              <p id="quick-stat-today" class="text-2xl font-black text-slate-800 mt-0.5">0</p>
+              <p id="quick-stat-today-date" class="text-[11px] text-slate-400 mt-0.5">Fecha actual</p>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-[#FDF2F4] text-[#C8102E] flex items-center justify-center font-black text-lg">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Avance Mensual Asesor</p>
+              <span id="quick-stat-month-pct" class="text-xs font-extrabold text-[#C8102E]">0%</span>
+            </div>
+            <div class="flex items-baseline gap-2">
+              <p id="quick-stat-month" class="text-2xl font-black text-slate-800">0</p>
+              <span class="text-xs text-slate-400 font-medium">/ 1,250 meta</span>
+            </div>
+            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2">
+              <div id="quick-stat-month-bar" class="h-full bg-[#C8102E] rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Re-consultas del Mes</p>
+              <p id="quick-stat-repeats" class="text-2xl font-black text-orange-600 mt-0.5">0</p>
+              <p class="text-[11px] text-slate-400 mt-0.5">Estudiantes resaltados en naranja</p>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Último Registro</p>
+              <p id="quick-stat-last-code" class="text-2xl font-black text-slate-800 mt-0.5">------</p>
+              <p id="quick-stat-last-proc" class="text-[11px] text-slate-400 truncate max-w-[170px] mt-0.5">Listo para registrar</p>
+            </div>
+            <div class="w-11 h-11 rounded-2xl bg-slate-100 text-[#63666A] flex items-center justify-center">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contenedor Principal: Formulario Rápido (7 cols) + Vista Previa del Día (5 cols) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          <!-- COLUMNA IZQUIERDA: FORMULARIO DE REGISTRO ULTRARRÁPIDO -->
+          <div class="lg:col-span-7 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-[#C8102E] px-6 py-4 flex flex-wrap items-center justify-between gap-2 text-white">
+              <div class="flex items-center gap-2.5">
+                <span class="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center font-black text-sm">X</span>
+                <div>
+                  <h2 class="text-base font-extrabold tracking-tight">Nuevo Registro de Atención Estudiantil</h2>
+                  <p class="text-[11px] text-red-100">Flujo rápido: Ingrese código → Marque trámites → Enter para guardar</p>
+                </div>
+              </div>
+              <span class="text-xs font-semibold bg-black/20 px-3 py-1 rounded-full">Atajos: Teclas 1-9, 0, Q</span>
+            </div>
+
+            <form id="fast-entry-form" onsubmit="handleSaveRecord(event)" class="p-6 space-y-6">
+              
+              <!-- Paso 1: Registro del Estudiante (6 dígitos) y Fecha -->
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                <div class="sm:col-span-7">
+                  <label for="entry-registro" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    1. N° Registro de Estudiante (6 dígitos) <span class="text-[#C8102E]">*</span>
+                  </label>
+                  <div class="relative">
+                    <input
+                      type="text"
+                      id="entry-registro"
+                      inputmode="numeric"
+                      maxlength="6"
+                      autocomplete="off"
+                      placeholder="Ej. 780196"
+                      oninput="handleStudentCodeInput(this.value)"
+                      class="w-full px-4 py-3 text-xl font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-2xl focus:bg-white focus:outline-none focus:border-[#C8102E] focus:ring-4 focus:ring-red-500/10 transition"
+                    />
+                    <span id="registro-char-counter" class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 bg-white px-2 py-0.5 rounded-md border border-slate-200">0/6</span>
+                  </div>
+                </div>
+
+                <div class="sm:col-span-5">
+                  <label for="entry-fecha" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Fecha de Atención <span class="text-[#C8102E]">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    id="entry-fecha"
+                    required
+                    disabled
+                    aria-disabled="true"
+                    onchange="handleStudentCodeInput(document.getElementById('entry-registro').value)"
+                    class="w-full px-4 py-3 text-sm font-bold text-slate-500 bg-slate-100 border-2 border-slate-200 rounded-2xl cursor-not-allowed"
+                  />
+                  <p id="entry-fecha-help" class="mt-1 text-[10px] font-medium text-slate-400">Fecha automática del sistema</p>
+                </div>
+              </div>
+
+              <!-- ALERTA INSTANTÁNEA NARANJA SI EL ESTUDIANTE YA FUE ATENDIDO (Como en el Excel) -->
+              <div id="repeat-alert-box" class="hidden rounded-2xl bg-orange-50 border-2 border-orange-300 p-4 animate-fade-in">
+                <div class="flex items-start gap-3">
+                  <div class="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 font-black shadow-sm">!</div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <h4 class="text-sm font-extrabold text-orange-900">Estudiante con Atención Previa Registrada</h4>
+                      <span id="repeat-alert-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-orange-200 text-orange-900">Re-consulta</span>
+                    </div>
+                    <p id="repeat-alert-summary" class="text-xs text-orange-800 mt-1"></p>
+                    <div id="repeat-alert-history" class="mt-3"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Paso 2: Selección Múltiple de los 11 Trámites Exactos del Excel UTEPSA -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    2. Solicitud / Trámite Realizado (Marcar con X) <span class="text-[#C8102E]">*</span>
+                  </label>
+                  <span id="selected-procs-count" class="text-xs font-bold text-[#C8102E]">0 seleccionados</span>
+                </div>
+
+                <div id="procedures-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  <!-- Generado dinámicamente con los 11 trámites exactos de UTEPSA -->
+                </div>
+              </div>
+
+              <!-- Paso 3: Observaciones + Etiquetas Rápidas Clicables -->
+              <div class="space-y-2.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <label for="entry-observaciones" class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    3. Observaciones
+                  </label>
+                  <span class="text-[11px] text-slate-400">Clic en etiqueta para agregar rápidamente</span>
+                </div>
+
+                <!-- Etiquetas rápidas inspiradas en la planilla de Oscar Vargas -->
+                <div id="quick-obs-tags" class="flex flex-wrap gap-1.5">
+                  <!-- Renderizado por JS -->
+                </div>
+
+                <input
+                  type="text"
+                  id="entry-observaciones"
+                  placeholder="Ej. MOD 3, HISTORIAL DE NOTAS, DEFENSA EXTERNA..."
+                  class="w-full px-4 py-3 text-sm font-medium text-slate-800 bg-slate-50 border-2 border-slate-300 rounded-2xl focus:bg-white focus:outline-none focus:border-[#C8102E] transition"
+                />
+              </div>
+
+              <!-- Botones de Acción -->
+              <div class="pt-2 flex flex-col sm:flex-row items-center gap-3">
+                <button type="submit" class="w-full sm:flex-1 py-3.5 px-6 rounded-2xl bg-[#C8102E] hover:bg-[#9E0B22] active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-red-600/20 transition flex items-center justify-center gap-2">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                  <span>Guardar Atención (Enter)</span>
+                </button>
+                <button type="button" onclick="resetFastForm()" class="w-full sm:w-auto py-3.5 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition">
+                  Limpiar
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- COLUMNA DERECHA: BITÁCORA EN VIVO DE HOY (ESTILO EXCEL) -->
+          <div class="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-[#63666A] px-5 py-4 flex items-center justify-between text-white">
+              <div>
+                <h3 class="text-sm font-extrabold tracking-tight">Registros de Hoy (Vista Rápida)</h3>
+                <p id="today-feed-subtitle" class="text-[11px] text-slate-200">Sincronizado en tiempo real</p>
+              </div>
+              <button type="button" onclick="switchTab('historial')" class="text-xs font-bold bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl transition">
+                Ver Todo →
+              </button>
+            </div>
+
+            <div id="today-feed-container" class="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+              <!-- Lista de atenciones de hoy -->
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VISTA B: HISTORIAL DE ATENCIONES CON PAGINACIÓN Y FILTROS         -->
+      <!-- ================================================================= -->
+      <section id="view-historial" class="hidden space-y-5 animate-fade-in">
+        
+        <!-- Panel de Filtros y Acciones -->
+        <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-800">Historial General de Atenciones SAE</h2>
+              <p class="text-xs text-slate-500">Formato tabular compatible con la planilla Excel UTEPSA</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="exportToExcelXLS('historial')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                <span>Exportar Excel (.xls)</span>
+              </button>
+              <button type="button" onclick="exportToCSV('historial')" class="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+                <span>CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Controles de Búsqueda y Filtrado -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 lg:items-end gap-3 pt-2 border-t border-slate-100">
+            <div class="lg:col-span-3 relative">
+              <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
+              <input type="text" id="hist-search" placeholder="N° Registro u Observación..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#C8102E]" />
+            </div>
+
+            <div class="lg:col-span-2">
+              <label class="block text-[10px] font-bold text-slate-500 mb-1" for="hist-date-from">Desde</label>
+              <input type="date" id="hist-date-from" aria-label="Fecha desde" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#C8102E]" />
+            </div>
+
+            <div class="lg:col-span-2">
+              <label class="block text-[10px] font-bold text-slate-500 mb-1" for="hist-date-to">Hasta</label>
+              <input type="date" id="hist-date-to" aria-label="Fecha hasta" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#C8102E]" />
+            </div>
+
+            <div class="lg:col-span-2">
+              <select id="hist-filter-month" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#C8102E]">
+                <option value="ALL">Todos los meses</option>
+              </select>
+            </div>
+
+            <div class="lg:col-span-2">
+              <select id="hist-filter-proc" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#C8102E]">
+                <option value="ALL">Todos los trámites</option>
+              </select>
+            </div>
+
+            <div class="lg:col-span-2">
+              <select id="hist-filter-advisor" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#C8102E]">
+                <option value="ALL">Todos los asesores</option>
+              </select>
+            </div>
+
+            <div class="lg:col-span-2 flex items-center">
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none px-3 py-2 rounded-xl bg-orange-50 border border-orange-200 w-full justify-center">
+                <input type="checkbox" id="hist-filter-repeats" class="rounded text-orange-600 focus:ring-orange-500" />
+                <span class="text-xs font-bold text-orange-800">Solo Re-consultas</span>
+              </label>
+            </div>
+            <div class="lg:col-span-12 flex flex-wrap justify-end gap-2">
+              <button type="button" onclick="resetHistoryPageAndRender()" class="px-4 py-2 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white text-xs font-bold transition">Buscar</button>
+              <button type="button" onclick="clearHistoryFilters()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">Limpiar</button>
+            </div>
+            <p id="hist-range-error" class="hidden lg:col-span-12 text-xs font-semibold text-[#C8102E]">La fecha inicial no puede ser posterior a la fecha final.</p>
+            <p class="lg:col-span-12 text-[10px] text-slate-400">Configure los filtros y pulse Buscar. Si indica fechas, el rango tiene prioridad sobre el mes e incluye ambas fechas.</p>
+          </div>
+        </div>
+
+        <!-- Tabla Tipo Excel UTEPSA con Encabezado Carmesí -->
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto excel-scroll">
+            <table class="w-full text-left border-collapse whitespace-nowrap">
+              <thead>
+                <tr class="bg-[#C8102E] text-white text-[11px] font-extrabold uppercase tracking-wider">
+                  <th class="py-3 px-3 border-r border-red-800/50">FECHA</th>
+                  <th class="py-3 px-3 border-r border-red-800/50">REGISTRO</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="PENSUM">PENSUM</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="PROGRAMACIÓN">PROGR.</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="CONFIRMACIÓN">CONFIR.</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="PLAN DE PAGO">PLAN PAGO</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="RECARGO">RECARGO</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="CONGELAMIENTO">CONGEL.</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="PRO-FORMA">PRO-FORMA</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="ABONOS">ABONOS</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="INFORMACIÓN">INFORM.</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="REINGRESANTE">REINGR.</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="EX. DE GRADO / TESIS">EX. GRADO</th>
+                  <th class="py-3 px-3 border-r border-red-800/50">OBSERVACIONES</th>
+                  <th class="py-3 px-3 border-r border-red-800/50">ASESOR</th>
+                  <th class="py-3 px-3 text-center">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body" class="divide-y divide-slate-200 text-xs">
+                <!-- Filas renderizadas dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Controles de Paginación -->
+          <div class="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3 text-xs text-slate-600">
+              <span id="pagination-info" class="font-semibold">Mostrando 0 de 0 registros</span>
+              <select id="pagination-size" onchange="resetHistoryPageAndRender()" class="px-2.5 py-1 rounded-lg border border-slate-300 bg-white font-semibold text-xs">
+                <option value="25">25 / pág</option>
+                <option value="50" selected>50 / pág</option>
+                <option value="100">100 / pág</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="changeHistoryPage('first')" id="btn-page-first" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold disabled:opacity-40">«</button>
+              <button type="button" onclick="changeHistoryPage('prev')" id="btn-page-prev" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold disabled:opacity-40">Anterior</button>
+              <span id="pagination-page-indicator" class="px-3 py-1.5 text-xs font-extrabold text-slate-800">Página 1 de 1</span>
+              <button type="button" onclick="changeHistoryPage('next')" id="btn-page-next" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold disabled:opacity-40">Siguiente</button>
+              <button type="button" onclick="changeHistoryPage('last')" id="btn-page-last" class="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold disabled:opacity-40">»</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VISTA C: DASHBOARD DE REPORTE MENSUAL E INDICADORES (KPIs)        -->
+      <!-- ================================================================= -->
+      <section id="view-reportes" class="hidden space-y-6 animate-fade-in">
+        
+        <!-- Barra Superior de Filtros del Reporte Mensual y Exportación -->
+        <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 no-print">
+          <div>
+            <h2 id="report-title" class="text-lg font-extrabold text-slate-800">Reporte Mensual de Atención SAE</h2>
+            <p class="text-xs text-slate-500">Análisis estadístico de demanda estudiantil, picos y productividad por asesor según el periodo seleccionado</p>
+          </div>
+
+          <div class="flex flex-wrap items-end gap-2.5">
+            <div>
+              <label class="sr-only" for="report-month-select">Mes de Reporte</label>
+              <select id="report-month-select" class="px-3.5 py-2 rounded-xl border-2 border-slate-200 text-xs font-bold text-slate-800 bg-slate-50 focus:outline-none focus:border-[#C8102E]">
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 mb-1" for="report-date-from">Desde</label>
+              <input type="date" id="report-date-from" aria-label="Fecha desde del reporte" class="px-3 py-2 rounded-xl border-2 border-slate-200 text-xs font-bold text-slate-800 bg-slate-50 focus:outline-none focus:border-[#C8102E]" />
+            </div>
+
+            <div>
+              <label class="block text-[10px] font-bold text-slate-500 mb-1" for="report-date-to">Hasta</label>
+              <input type="date" id="report-date-to" aria-label="Fecha hasta del reporte" class="px-3 py-2 rounded-xl border-2 border-slate-200 text-xs font-bold text-slate-800 bg-slate-50 focus:outline-none focus:border-[#C8102E]" />
+            </div>
+
+            <div>
+              <label class="sr-only" for="report-advisor-select">Asesor</label>
+              <select id="report-advisor-select" class="px-3.5 py-2 rounded-xl border-2 border-slate-200 text-xs font-bold text-slate-800 bg-slate-50 focus:outline-none focus:border-[#C8102E]">
+                <option value="ALL">Todos los Asesores (Global)</option>
+              </select>
+            </div>
+
+            <button type="button" onclick="renderMonthlyReport()" class="px-4 py-2 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white text-xs font-bold transition">Buscar</button>
+            <button type="button" onclick="clearReportFilters()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">Limpiar</button>
+
+            <button type="button" onclick="exportToExcelXLS('reporte')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+              <span>Exportar Excel UTEPSA</span>
+            </button>
+
+            <button type="button" onclick="printExecutiveReport()" class="px-4 py-2 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z"/></svg>
+              <span>Imprimir Reporte Ejecutivo</span>
+            </button>
+          </div>
+          <p id="report-range-error" class="hidden w-full text-xs font-semibold text-[#C8102E]">La fecha inicial no puede ser posterior a la fecha final.</p>
+          <p class="w-full text-[10px] text-slate-400">Configure los filtros y pulse Buscar. Si indica fechas, el rango tiene prioridad sobre el mes e incluye ambas fechas.</p>
+        </div>
+
+        <!-- 4 Tarjetas KPI Principales -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print-break-inside-avoid">
+          
+          <!-- KPI 1: Total de Atenciones del Mes + Meta 1000-1500 -->
+          <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <span id="kpi-total-label" class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Atenciones Mes</span>
+              <span id="kpi-goal-badge" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E]">Meta: 1,000-1,500</span>
+            </div>
+            <p id="kpi-total-attentions" class="text-3xl font-black text-slate-900">0</p>
+            <div class="mt-3">
+              <div class="flex justify-between text-[11px] font-semibold text-slate-500 mb-1">
+                <span id="kpi-goal-caption">Cumplimiento meta</span>
+                <span id="kpi-goal-pct" class="text-[#C8102E] font-bold">0%</span>
+              </div>
+              <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                <div id="kpi-goal-bar" class="h-full bg-[#C8102E] rounded-full transition-all duration-500" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- KPI 2: Estudiantes Únicos vs Re-consultas -->
+          <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Estudiantes Únicos</span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-100 text-orange-800">Re-consultas</span>
+            </div>
+            <div class="flex items-baseline gap-2.5">
+              <p id="kpi-unique-students" class="text-3xl font-black text-slate-900">0</p>
+              <span id="kpi-repeat-count" class="text-xs font-bold text-orange-600">+0 re-consultas</span>
+            </div>
+            <p id="kpi-repeat-rate" class="text-xs text-slate-500 mt-3 font-medium">0% de atenciones recurrentes en el mes</p>
+          </div>
+
+          <!-- KPI 3: Trámite Más Solicitado -->
+          <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Trámite Más Solicitado</span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#C8102E]"></span>
+            </div>
+            <p id="kpi-top-procedure" class="text-xl font-black text-[#C8102E] truncate mt-1">-</p>
+            <p id="kpi-top-procedure-stats" class="text-xs text-slate-600 font-semibold mt-3">0 solicitudes (0% del total)</p>
+          </div>
+
+          <!-- KPI 4: Promedio Diario de Atención -->
+          <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Promedio Diario</span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-[#63666A]">Días activos</span>
+            </div>
+            <div class="flex items-baseline gap-2">
+              <p id="kpi-daily-avg" class="text-3xl font-black text-slate-900">0</p>
+              <span class="text-xs font-semibold text-slate-500">est. / día</span>
+            </div>
+            <p id="kpi-peak-day" class="text-xs text-slate-500 mt-3 font-medium truncate">Día pico: -</p>
+          </div>
+        </div>
+
+        <!-- Fila de Gráficos 1: Ranking Horizontal de Trámites (7 cols) + Tabla Resumen Demanda (5 cols) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 print-break-inside-avoid">
+          <div class="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-base font-extrabold text-slate-800">¿Qué más pidieron los estudiantes?</h3>
+                <p class="text-xs text-slate-500">Ranking de los 11 trámites oficiales marcados con (X) en el periodo</p>
+              </div>
+              <span id="total-marks-badge" class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-extrabold">0 trámites</span>
+            </div>
+            <div class="h-80 w-full relative">
+              <canvas id="chart-procedures"></canvas>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
+            <h3 class="text-base font-extrabold text-slate-800 mb-1">Desglose Porcentual de Solicitudes</h3>
+            <p class="text-xs text-slate-500 mb-4">Participación sobre el total de trámites y % de estudiantes</p>
+            <div class="overflow-y-auto flex-1 max-h-80 pr-1">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] sticky top-0">
+                  <tr>
+                    <th class="py-2 px-2.5 rounded-l-lg">Trámite</th>
+                    <th class="py-2 px-2 text-right">Cant. (X)</th>
+                    <th class="py-2 px-2.5 text-right rounded-r-lg">% Demanda</th>
+                  </tr>
+                </thead>
+                <tbody id="report-procedures-table" class="divide-y divide-slate-100">
+                  <!-- Renderizado dinámico -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fila de Gráficos 2: Evolución Diaria (7 cols) + Comparativa por Asesor (5 cols) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 print-break-inside-avoid">
+          <div class="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="mb-4">
+              <h3 class="text-base font-extrabold text-slate-800">Evolución Diaria de Atenciones en el Mes</h3>
+              <p class="text-xs text-slate-500">Identificación de picos de demanda (inicio de módulo y fechas límite)</p>
+            </div>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-daily-trend"></canvas>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <div class="mb-4">
+              <h3 id="report-advisors-title" class="text-base font-extrabold text-slate-800">Atención global del asesor</h3>
+              <p id="report-advisors-description" class="text-xs text-slate-500">Total de atenciones registradas por usted en el periodo seleccionado</p>
+            </div>
+            <div class="h-72 w-full relative">
+              <canvas id="chart-advisors"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pie exclusivo para Impresión Ejecutiva -->
+        <div class="hidden print-only pt-10 mt-8 border-t border-slate-300 grid grid-cols-2 gap-12 text-center text-xs text-slate-700">
+          <div>
+            <div class="border-t border-slate-500 w-56 mx-auto pt-2 font-bold">Firma Asesor SAE</div>
+          </div>
+          <div>
+            <div class="border-t border-slate-500 w-56 mx-auto pt-2 font-bold">V°B° Jefatura / Coordinación SAE UTEPSA</div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- MODAL 1: EDITAR REGISTRO DE ATENCIÓN                                  -->
+  <!-- ===================================================================== -->
+  <div id="modal-edit" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-fade-in">
+      <div class="bg-[#C8102E] px-6 py-4 flex items-center justify-between text-white">
+        <h3 class="text-sm font-extrabold uppercase tracking-wider">Editar Registro de Atención</h3>
+        <button type="button" onclick="closeModal('modal-edit')" class="text-white/80 hover:text-white text-lg font-bold">✕</button>
+      </div>
+      <form onsubmit="handleUpdateRecord(event)" class="p-6 space-y-4">
+        <input type="hidden" id="edit-record-id" />
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Registro Estudiante (6 dígitos)</label>
+            <input type="text" id="edit-registro" maxlength="6" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold focus:outline-none focus:border-[#C8102E]" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Fecha</label>
+            <input type="date" id="edit-fecha" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold focus:outline-none focus:border-[#C8102E]" />
+            <p id="edit-fecha-help" class="mt-1 text-[10px] font-medium text-slate-400"></p>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase mb-2">Trámites Solicitados (X)</label>
+          <div id="edit-procedures-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Observaciones</label>
+          <input type="text" id="edit-observaciones" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-[#C8102E]" />
+        </div>
+        <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-edit')" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">Cancelar</button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white text-xs font-bold">Guardar Cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 2: CONFIRMACIÓN PERSONALIZADA (Reemplaza confirm())             -->
+  <!-- ===================================================================== -->
+  <div id="modal-confirm" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-fade-in">
+      <div class="p-6">
+        <div class="w-12 h-12 rounded-2xl bg-red-50 text-[#C8102E] flex items-center justify-center mb-4">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+        </div>
+        <h3 id="confirm-title" class="text-base font-extrabold text-slate-900">¿Confirmar acción?</h3>
+        <p id="confirm-message" class="text-xs text-slate-600 mt-1.5 leading-relaxed">Esta acción no se puede deshacer.</p>
+        <div class="flex justify-end gap-2.5 mt-6">
+          <button type="button" onclick="closeModal('modal-confirm')" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">Cancelar</button>
+          <button type="button" id="confirm-accept-btn" class="px-4 py-2 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white text-xs font-bold">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- LÓGICA DE APLICACIÓN, FIREBASE (AUTH + FIRESTORE) Y ANALÍTICA         -->
+  <!-- ===================================================================== -->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
