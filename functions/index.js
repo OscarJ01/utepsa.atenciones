@@ -38,8 +38,8 @@ exports.getLatestStudentAttendance = onCall(async (request) => {
   }
 
   const studentCode = request.data?.studentCode;
-  if (typeof studentCode !== 'string' || !/^(?:\d{6}|\d{5}A)$/.test(studentCode)) {
-    throw new HttpsError('invalid-argument', 'El código debe contener seis dígitos o cinco dígitos seguidos de A.');
+  if (typeof studentCode !== 'string' || !/^(?:\d{4,6}|\d{5}A)$/.test(studentCode)) {
+    throw new HttpsError('invalid-argument', 'El código debe contener de cuatro a seis dígitos o cinco dígitos seguidos de A.');
   }
   const targetMonth = request.data?.targetMonth;
   if (

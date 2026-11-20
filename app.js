@@ -112,7 +112,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     }
 
     function isValidStudentCode(value) {
-      return /^(?:\d{6}|\d{5}A)$/.test(value);
+      return /^(?:\d{4,6}|\d{5}A)$/.test(value);
     }
 
     // =========================================================================
@@ -1091,7 +1091,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const observaciones = document.getElementById('entry-observaciones').value.trim().toUpperCase();
 
       if (!isValidStudentCode(registro)) {
-        showToast('Ingrese 6 dígitos o 5 dígitos seguidos de la letra A.', 'error');
+        showToast('Ingrese un código de 4 a 6 dígitos o cinco dígitos seguidos de A.', 'error');
         registroInput.focus();
         return;
       }
@@ -1588,7 +1588,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const observaciones = document.getElementById('edit-observaciones').value.trim().toUpperCase();
 
       if (!isValidStudentCode(registro)) {
-        showToast('Ingrese 6 dígitos o 5 dígitos seguidos de la letra A.', 'error');
+        showToast('Ingrese un código de 4 a 6 dígitos o cinco dígitos seguidos de A.', 'error');
         return;
       }
       if (canEditStudentCode) {
