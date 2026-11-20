@@ -301,11 +301,11 @@
 
             <form id="fast-entry-form" onsubmit="handleSaveRecord(event)" class="p-6 space-y-6">
               
-              <!-- Paso 1: Registro del Estudiante (6 caracteres) y Fecha -->
+              <!-- Paso 1: Registro del Estudiante y Fecha -->
               <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
                 <div class="sm:col-span-7">
                   <label for="entry-registro" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    1. N° Registro de Estudiante (6 dígitos o termina en A) <span class="text-[#C8102E]">*</span>
+                    1. N° Registro de Estudiante <span class="text-[#C8102E]">*</span>
                   </label>
                   <div class="relative">
                     <input
@@ -314,7 +314,7 @@
                       inputmode="text"
                       maxlength="6"
                       autocomplete="off"
-                      placeholder="Ej. 780196 o 12345A"
+                      placeholder="Ej. 12345A"
                       oninput="handleStudentCodeInput(this.value)"
                       class="w-full px-4 py-3 text-xl font-black tracking-widest text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-2xl focus:bg-white focus:outline-none focus:border-[#C8102E] focus:ring-4 focus:ring-red-500/10 transition"
                     />
@@ -774,7 +774,7 @@
         <input type="hidden" id="edit-record-id" />
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Registro Estudiante (6 dígitos o termina en A)</label>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Registro Estudiante</label>
             <input type="text" id="edit-registro" inputmode="text" maxlength="6" oninput="handleEditStudentCodeInput(this.value)" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold focus:outline-none focus:border-[#C8102E]" />
           </div>
           <div>
