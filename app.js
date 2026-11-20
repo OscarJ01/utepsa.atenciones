@@ -47,7 +47,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       'MOD 3',
       'MOD 4',
       'MOD 5',
-      'HISTORIAS DE NOTAS',
+      'HISTORIAL DE NOTAS',
       'DEFENSA EXTERNA',
       'INFORMACION'
     ];
