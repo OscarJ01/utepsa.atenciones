@@ -101,9 +101,17 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // =========================================================================
     // 3. INICIALIZACIÓN Y GESTIÓN DE FIREBASE (REGLAS 1, 2 Y 3)
     // =========================================================================
+    function finishInitialLoading() {
+      document.getElementById('app-loading-screen')?.classList.add('hidden');
+      if (!state.currentUser) {
+        document.getElementById('login-screen')?.classList.remove('hidden');
+      }
+    }
+
     async function initFirebaseFromConfig(configObj) {
       try {
         if (!configObj || !configObj.apiKey || !configObj.projectId) {
+          finishInitialLoading();
           return false;
         }
 
@@ -134,19 +142,26 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         state.firebase.connected = false;
         updateFirebaseStatusUI(false, configObj.projectId, true);
 
+        await auth.authStateReady();
+
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
           state.firebase.connected = false;
           updateFirebaseStatusUI(false, configObj.projectId, true);
-          startFirestoreRealtimeSync();
         }
 
+        if (auth.currentUser) {
+          await completeAuthentication(auth.currentUser, auth.currentUser.email || '');
+        }
+
+        finishInitialLoading();
         return true;
       } catch (err) {
         console.error('Error al inicializar Firebase:', err);
         state.firebase.initialized = false;
         state.firebase.connected = false;
         updateFirebaseStatusUI(false);
+        finishInitialLoading();
         const message = err?.code === 'auth/operation-not-allowed'
           ? 'Habilite el proveedor Correo/Contraseña en Authentication del proyecto Firebase.'
           : err?.code === 'auth/unauthorized-domain'
@@ -533,39 +548,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // =========================================================================
     // 4. AUTENTICACIÓN Y NAVEGACIÓN
     // =========================================================================
-    window.handleAuthSubmit = async function (e) {
-      e.preventDefault();
-      const email = document.getElementById('auth-email').value.trim().toLowerCase();
-      const password = document.getElementById('auth-password').value;
-
-      if (!state.firebase.initialized || !state.firebase.auth) {
-        showToast('Firebase no está disponible. Verifique la conexión e inténtelo de nuevo.', 'error');
-        return;
-      }
-
-      let credential;
-      try {
-        credential = await signInWithEmailAndPassword(state.firebase.auth, email, password);
-      } catch (err) {
-        console.error('Error al autenticar con Firebase:', err);
-        state.firebase.connected = false;
-        updateFirebaseStatusUI(false, state.firebase.app?.options.projectId, true);
-        const message = err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found'
-          ? 'Correo o contraseña incorrectos.'
-          : err?.code === 'auth/operation-not-allowed'
-            ? 'El proveedor Correo/Contraseña no está habilitado en Firebase Authentication.'
-            : 'Firebase rechazó el inicio de sesión. Verifique la cuenta y la configuración de Authentication.';
-        showToast(message, 'error');
-        return;
-      }
-
-      const authUser = credential.user;
-      const isInitialAdmin = authUser.email?.toLowerCase() === INITIAL_ADMIN_EMAIL;
-      const derivedName = (authUser.email || email)
-        .split('@')[0]
-        .split('.')
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
+    async function completeAuthentication(authUser, emailFallback) {
+      const email = String(authUser.email || emailFallback).trim().toLowerCase();
+      const isInitialAdmin = email === INITIAL_ADMIN_EMAIL;
       let profile = {};
 
       try {
@@ -579,7 +564,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         return;
       }
 
-      const authEmail = String(authUser.email || email).trim().toLowerCase();
+      const authEmail = String(authUser.email || emailFallback).trim().toLowerCase();
       const profileEmail = String(profile.email || (isInitialAdmin ? authEmail : '')).trim().toLowerCase();
       const isAdmin = isInitialAdmin
         || (profile.rol === 'Administrador' && profileEmail === authEmail);
@@ -609,11 +594,40 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       enterApplication({
         uid: authUser.uid,
         name,
-        email: authUser.email || email,
+        email: authUser.email || emailFallback,
         phone,
         role
       });
       startFirestoreRealtimeSync();
+    }
+
+    window.handleAuthSubmit = async function (e) {
+      e.preventDefault();
+      const email = document.getElementById('auth-email').value.trim().toLowerCase();
+      const password = document.getElementById('auth-password').value;
+
+      if (!state.firebase.initialized || !state.firebase.auth) {
+        showToast('Firebase no está disponible. Verifique la conexión e inténtelo de nuevo.', 'error');
+        return;
+      }
+
+      let credential;
+      try {
+        credential = await signInWithEmailAndPassword(state.firebase.auth, email, password);
+      } catch (err) {
+        console.error('Error al autenticar con Firebase:', err);
+        state.firebase.connected = false;
+        updateFirebaseStatusUI(false, state.firebase.app?.options.projectId, true);
+        const message = err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found'
+          ? 'Correo o contraseña incorrectos.'
+          : err?.code === 'auth/operation-not-allowed'
+            ? 'El proveedor Correo/Contraseña no está habilitado en Firebase Authentication.'
+            : 'Firebase rechazó el inicio de sesión. Verifique la cuenta y la configuración de Authentication.';
+        showToast(message, 'error');
+        return;
+      }
+
+      await completeAuthentication(credential.user, email);
     };
 
     function enterApplication(user) {

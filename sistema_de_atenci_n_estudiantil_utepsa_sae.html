@@ -26,7 +26,14 @@
   <!-- ===================================================================== -->
   <!-- 1. PANTALLA DE LOGIN INSTITUCIONAL UTEPSA                             -->
   <!-- ===================================================================== -->
-  <section id="login-screen" class="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-slate-100 via-slate-50 to-red-50/40">
+  <section id="app-loading-screen" class="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50" role="status" aria-live="polite">
+    <div class="w-12 h-12 rounded-full border-4 border-slate-200 border-t-[#C8102E] animate-spin"></div>
+    <div class="text-center">
+      <p class="font-bold text-slate-800">UTEPSA SAE</p>
+      <p class="mt-1 text-sm text-slate-500">Verificando tu sesión...</p>
+    </div>
+  </section>
+  <section id="login-screen" class="hidden min-h-screen flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-slate-100 via-slate-50 to-red-50/40">
     <div class="w-full max-w-5xl bg-white rounded-3xl shadow-xl border border-slate-200/80 overflow-hidden grid grid-cols-1 lg:grid-cols-12 animate-fade-in">
       
       <!-- Panel Izquierdo Institucional UTEPSA -->
