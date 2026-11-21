@@ -119,7 +119,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         summaryBackfillStarted: false
       },
       latestAttendanceLookup: { key: '', promise: null },
-      latestAttendanceRequestId: 0
+      latestAttendanceRequestId: 0,
+      loadedMonths: new Set(),
+      loadingMonths: new Set(),
+      studentSummaryCache: new Map(),
+      studentLookupTimer: null
     };
 
     function normalizeStudentCodeInput(value) {
@@ -216,73 +220,63 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
     }
 
+    function mapFirestoreRecord(docSnap) {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        fecha: data.fecha || getTodayISO(),
+        mesAnio: data.mesAnio || (data.fecha ? data.fecha.slice(0, 7) : getTodayISO().slice(0, 7)),
+        registro: String(data.registro || '').trim(),
+        tramites: data.tramites || {},
+        observaciones: data.observaciones || '',
+        asesor: data.asesor || 'Oscar Vargas',
+        asesorUid: data.asesorUid || '',
+        canalAtencion: data.canalAtencion === 'wati' ? 'wati' : 'plataforma',
+        createdAt: Number.isFinite(data.createdAt) ? data.createdAt : 0,
+        createdAtServer: data.createdAtServer || null,
+        pendingSync: docSnap.metadata.hasPendingWrites
+      };
+    }
+
     function startFirestoreRealtimeSync() {
-      // Guard estricto (Regla 3)
       if (!state.firebase.db || !state.firebase.auth?.currentUser) return;
 
       if (state.firebase.unsubscribeSnapshot) {
         state.firebase.unsubscribeSnapshot();
       }
 
+      const currentMonth = getTodayISO().slice(0, 7);
+      state.loadedMonths.add(currentMonth);
+
       const recordsRef = collection(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones');
       const colRef = state.currentUser?.role === 'Asesor'
-        ? query(recordsRef, where('asesorUid', '==', state.currentUser.uid))
-        : recordsRef;
+        ? query(
+            recordsRef,
+            where('asesorUid', '==', state.currentUser.uid),
+            where('mesAnio', '==', currentMonth)
+          )
+        : query(recordsRef, where('mesAnio', '==', currentMonth));
 
       state.firebase.unsubscribeSnapshot = onSnapshot(
         colRef,
         { includeMetadataChanges: true },
         (snapshot) => {
-          const loaded = [];
+          const loadedCurrentMonth = [];
           snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            loaded.push({
-              id: docSnap.id,
-              fecha: data.fecha || getTodayISO(),
-              mesAnio: data.mesAnio || (data.fecha ? data.fecha.slice(0, 7) : getTodayISO().slice(0, 7)),
-              registro: String(data.registro || '').trim(),
-              tramites: data.tramites || {},
-              observaciones: data.observaciones || '',
-              asesor: data.asesor || 'Oscar Vargas',
-              asesorUid: data.asesorUid || '',
-              canalAtencion: data.canalAtencion === 'wati' ? 'wati' : 'plataforma',
-              createdAt: Number.isFinite(data.createdAt) ? data.createdAt : 0,
-              createdAtServer: data.createdAtServer || null,
-              pendingSync: docSnap.metadata.hasPendingWrites
-            });
+            loadedCurrentMonth.push(mapFirestoreRecord(docSnap));
           });
-          // Ordenar en memoria de forma descendente por fecha y marca de tiempo
-          loaded.sort((a, b) => {
+
+          const historicalRecords = state.records.filter((r) => r.mesAnio !== currentMonth);
+          const merged = [...loadedCurrentMonth, ...historicalRecords];
+          merged.sort((a, b) => {
             if (b.fecha !== a.fecha) return b.fecha.localeCompare(a.fecha);
             return (b.createdAt || 0) - (a.createdAt || 0);
           });
-          state.records = loaded;
-          state.firebase.pendingWrites = loaded.filter((record) => record.pendingSync).length;
+
+          state.records = merged;
+          state.firebase.pendingWrites = merged.filter((record) => record.pendingSync).length;
           state.firebase.connected = !snapshot.metadata.fromCache;
-          if (
-            state.currentUser?.role === 'Administrador'
-            && snapshot.docChanges({ includeMetadataChanges: false }).length > 0
-          ) {
-            state.firebase.summaryBackfillStarted = false;
-          }
-          if (
-            state.currentUser?.role === 'Administrador'
-            && !state.firebase.summaryBackfillStarted
-            && !snapshot.metadata.fromCache
-          ) {
-            state.firebase.summaryBackfillStarted = true;
-            syncLatestAttendanceSummaries(loaded)
-              .then((updatedCount) => {
-                if (updatedCount > 0) {
-                  showToast('Se preparó el historial de últimas atenciones para los asesores.', 'success');
-                }
-              })
-              .catch((error) => {
-                console.error('Error preparando resúmenes de última atención:', error);
-                state.firebase.summaryBackfillStarted = false;
-                showToast('No se pudieron preparar los resúmenes de última atención.', 'error');
-              });
-          }
+
           updateFirebaseStatusUI(
             state.firebase.connected,
             state.firebase.app?.options.projectId,
@@ -302,6 +296,82 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       );
     }
 
+    function getRecentMonthsList(count = 12) {
+      const now = new Date();
+      let y = now.getFullYear();
+      let m = now.getMonth() + 1;
+      const list = [];
+      for (let i = 0; i < count; i++) {
+        list.push(`${y}-${String(m).padStart(2, '0')}`);
+        m--;
+        if (m < 1) {
+          m = 12;
+          y--;
+        }
+      }
+      return list;
+    }
+
+    function getMonthsBetweenDates(fromISO, toISO) {
+      const endYM = (toISO || getTodayISO()).slice(0, 7);
+      const startYM = (fromISO || getRecentMonthsList(12).slice(-1)[0] + '-01').slice(0, 7);
+      if (startYM > endYM) return [];
+      const result = [];
+      let [y, m] = startYM.split('-').map(Number);
+      const [endY, endM] = endYM.split('-').map(Number);
+      while (y < endY || (y === endY && m <= endM)) {
+        result.push(`${y}-${String(m).padStart(2, '0')}`);
+        m++;
+        if (m > 12) {
+          m = 1;
+          y++;
+        }
+      }
+      return result;
+    }
+
+    async function ensureMonthsLoaded(monthsToLoad) {
+      if (!state.firebase.db || !state.firebase.auth?.currentUser) return false;
+      const missing = monthsToLoad.filter(
+        (ym) => ym && !state.loadedMonths.has(ym) && !state.loadingMonths.has(ym)
+      );
+      if (missing.length === 0) return false;
+
+      missing.forEach((ym) => state.loadingMonths.add(ym));
+      try {
+        const recordsRef = collection(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones');
+        const fetchedAll = [];
+        for (let i = 0; i < missing.length; i += 10) {
+          const chunk = missing.slice(i, i + 10);
+          const q = state.currentUser?.role === 'Asesor'
+            ? query(recordsRef, where('asesorUid', '==', state.currentUser.uid), where('mesAnio', 'in', chunk))
+            : query(recordsRef, where('mesAnio', 'in', chunk));
+          const snap = await getDocs(q);
+          snap.forEach((docSnap) => fetchedAll.push(mapFirestoreRecord(docSnap)));
+        }
+
+        const loadedSet = new Set(missing);
+        const kept = state.records.filter((r) => !loadedSet.has(r.mesAnio));
+        const merged = [...kept, ...fetchedAll];
+        merged.sort((a, b) => {
+          if (b.fecha !== a.fecha) return b.fecha.localeCompare(a.fecha);
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        });
+
+        state.records = merged;
+        missing.forEach((ym) => state.loadedMonths.add(ym));
+        document.getElementById('nav-count-badge').textContent = state.records.length.toLocaleString('es-BO');
+        populateDynamicFilters();
+        return true;
+      } catch (err) {
+        console.error('Error cargando meses anteriores:', err);
+        showToast('No se pudieron cargar los registros de meses anteriores.', 'error');
+        return false;
+      } finally {
+        missing.forEach((ym) => state.loadingMonths.delete(ym));
+      }
+    }
+
     function getAttendanceTimestampMillis(record) {
       if (typeof record.createdAtServer?.toMillis === 'function') {
         return record.createdAtServer.toMillis();
@@ -317,18 +387,6 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       return Timestamp.fromMillis(getAttendanceTimestampMillis(record));
     }
 
-    function getLatestAttendanceSummaryRef(studentCode) {
-      return doc(
-        state.firebase.db,
-        'artifacts',
-        appId,
-        'public',
-        'data',
-        'ultimaAtencion',
-        studentCode
-      );
-    }
-
     function getAdvisorLatestAttendanceSummaryRef(studentCode) {
       return doc(
         state.firebase.db,
@@ -341,19 +399,6 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       );
     }
 
-    function createAttendanceSummaryData(studentCode, record) {
-      return {
-        registro: studentCode,
-        asesor: record.asesor,
-        asesorUid: record.asesorUid,
-        fecha: record.fecha,
-        mesAnio: record.mesAnio,
-        createdAt: record.createdAt,
-        createdAtServer: toAttendanceTimestamp(record),
-        recordId: record.id
-      };
-    }
-
     function createAdvisorAttendanceSummaryData(studentCode, record) {
       return {
         registro: studentCode,
@@ -362,198 +407,6 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         createdAtServer: record.createdAtServer || toAttendanceTimestamp(record),
         recordId: record.id
       };
-    }
-
-    async function updateLatestAttendanceSummary(recordRef, recordData) {
-      const savedRecordSnapshot = await getDoc(recordRef);
-      if (!savedRecordSnapshot.exists()) {
-        throw new Error('El registro no aparece en Firestore después de guardarse.');
-      }
-
-      const savedRecord = savedRecordSnapshot.data();
-      const savedTimestamp = savedRecord.createdAtServer;
-      if (typeof savedTimestamp?.toMillis !== 'function') {
-        throw new Error('El registro guardado no contiene la marca de tiempo del servidor.');
-      }
-
-      const summaryRef = getLatestAttendanceSummaryRef(recordData.registro);
-      const currentSummary = await getDoc(summaryRef);
-      const currentData = currentSummary.data();
-      const currentTimestamp = currentData?.createdAtServer;
-      if (
-        typeof currentTimestamp?.toMillis === 'function'
-        && (
-          currentTimestamp.toMillis() > savedTimestamp.toMillis()
-          || (
-            currentTimestamp.toMillis() === savedTimestamp.toMillis()
-            && currentData.recordId >= recordRef.id
-          )
-        )
-      ) return;
-
-      const summaryData = createAttendanceSummaryData(recordData.registro, {
-        ...recordData,
-        createdAtServer: savedTimestamp,
-        id: recordRef.id
-      });
-      try {
-        await setDoc(summaryRef, summaryData);
-      } catch {
-        const latestSummary = await getDoc(summaryRef);
-        const latestData = latestSummary.data();
-        const latestTimestamp = latestData?.createdAtServer;
-        if (
-          typeof latestTimestamp?.toMillis === 'function'
-          && (
-            latestTimestamp.toMillis() > savedTimestamp.toMillis()
-            || (
-              latestTimestamp.toMillis() === savedTimestamp.toMillis()
-              && latestData.recordId >= recordRef.id
-            )
-          )
-        ) return;
-        try {
-          await setDoc(summaryRef, summaryData);
-        } catch (retryError) {
-          console.error('Error reintentando el resumen de última atención:', retryError);
-          throw retryError;
-        }
-      }
-    }
-
-    async function syncLatestAttendanceSummaries(records) {
-      const summariesByStudent = new Map();
-      records.forEach((record) => {
-        if (record.pendingSync || !isValidStudentCode(record.registro)) return;
-        const current = summariesByStudent.get(record.registro);
-        if (
-          !current
-          || getAttendanceTimestampMillis(record) > getAttendanceTimestampMillis(current)
-          || (
-            getAttendanceTimestampMillis(record) === getAttendanceTimestampMillis(current)
-            && record.id > current.id
-          )
-        ) {
-          summariesByStudent.set(record.registro, record);
-        }
-      });
-
-      const summaryCollection = collection(
-        state.firebase.db,
-        'artifacts',
-        appId,
-        'public',
-        'data',
-        'ultimaAtencion'
-      );
-      const existingSummaries = await getDocs(summaryCollection);
-      const currentSummaryByStudent = new Map();
-      existingSummaries.forEach((summary) => {
-        currentSummaryByStudent.set(summary.id, summary.data());
-      });
-      const advisorSummaryCollection = collection(
-        state.firebase.db,
-        'artifacts',
-        appId,
-        'public',
-        'data',
-        'ultimaAtencionAsesores'
-      );
-      const existingAdvisorSummaries = await getDocs(advisorSummaryCollection);
-      const currentAdvisorSummaryByStudent = new Map();
-      existingAdvisorSummaries.forEach((summary) => {
-        currentAdvisorSummaryByStudent.set(summary.id, summary.data());
-      });
-
-      const changes = [];
-      for (const [studentCode, record] of summariesByStudent) {
-        const current = currentSummaryByStudent.get(studentCode);
-        const recordTimestamp = toAttendanceTimestamp(record);
-        const privateSummaryMatches = Boolean(
-          current
-          && current.recordId === record.id
-          && current.createdAtServer?.toMillis?.() === recordTimestamp.toMillis()
-          && current.asesor === record.asesor
-          && current.asesorUid === record.asesorUid
-          && current.fecha === record.fecha
-          && current.mesAnio === record.mesAnio
-          && current.createdAt === record.createdAt
-        );
-        const privateSummaryTimestamp = current?.createdAtServer?.toMillis?.() ?? 0;
-        const privateSummaryIsNewer = current
-          && (
-            privateSummaryTimestamp > recordTimestamp.toMillis()
-            || (
-              privateSummaryTimestamp === recordTimestamp.toMillis()
-              && current.recordId > record.id
-            )
-          );
-        if (!privateSummaryMatches && !privateSummaryIsNewer) {
-          changes.push({
-            type: 'set',
-            ref: getLatestAttendanceSummaryRef(studentCode),
-            data: createAttendanceSummaryData(studentCode, record)
-          });
-        }
-
-        const advisorSummary = createAdvisorAttendanceSummaryData(studentCode, record);
-        const currentAdvisorSummary = currentAdvisorSummaryByStudent.get(studentCode);
-        const advisorSummaryMatches = Boolean(
-          currentAdvisorSummary
-          && currentAdvisorSummary.registro === advisorSummary.registro
-          && currentAdvisorSummary.asesor === advisorSummary.asesor
-          && currentAdvisorSummary.fecha === advisorSummary.fecha
-          && currentAdvisorSummary.recordId === advisorSummary.recordId
-          && currentAdvisorSummary.createdAtServer?.toMillis?.()
-            === advisorSummary.createdAtServer.toMillis()
-        );
-        const advisorSummaryTimestamp =
-          currentAdvisorSummary?.createdAtServer?.toMillis?.() ?? 0;
-        const advisorSummaryIsNewer = currentAdvisorSummary
-          && (
-            advisorSummaryTimestamp > recordTimestamp.toMillis()
-            || (
-              advisorSummaryTimestamp === recordTimestamp.toMillis()
-              && currentAdvisorSummary.recordId > record.id
-            )
-          );
-        if (!advisorSummaryMatches && !advisorSummaryIsNewer) {
-          changes.push({
-            type: 'set',
-            ref: getAdvisorLatestAttendanceSummaryRef(studentCode),
-            data: advisorSummary
-          });
-        }
-      }
-
-      for (const [studentCode] of currentSummaryByStudent) {
-        if (summariesByStudent.has(studentCode)) continue;
-        changes.push({
-          type: 'delete',
-          ref: getLatestAttendanceSummaryRef(studentCode)
-        });
-      }
-
-      for (const [studentCode] of currentAdvisorSummaryByStudent) {
-        if (summariesByStudent.has(studentCode)) continue;
-        changes.push({
-          type: 'delete',
-          ref: getAdvisorLatestAttendanceSummaryRef(studentCode)
-        });
-      }
-
-      for (let index = 0; index < changes.length; index += 10) {
-        const batch = writeBatch(state.firebase.db);
-        changes.slice(index, index + 10).forEach((change) => {
-          if (change.type === 'delete') {
-            batch.delete(change.ref);
-          } else {
-            batch.set(change.ref, change.data);
-          }
-        });
-        await batch.commit();
-      }
-      return changes.length;
     }
 
     function updateFirebaseStatusUI(isConnected, projectId = '', isReady = false) {
@@ -741,7 +594,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           state.channelAtencion = 'plataforma';
           state.reportChannelFilter = 'ALL';
           updateChannelModeUI();
-          state.records = [];
+         state.records = [];
+          state.loadedMonths.clear();
+          state.loadingMonths.clear();
+          state.studentSummaryCache.clear();
+          clearTimeout(state.studentLookupTimer);
           state.latestAttendanceLookup = { key: '', promise: null };
           state.latestAttendanceRequestId += 1;
           state.firebase.summaryBackfillStarted = false;
@@ -888,28 +745,33 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     };
 
     function getStudentAttendanceSummary(studentCode) {
-      const key = studentCode;
-      const cachedLookup = state.latestAttendanceLookup;
-      if (cachedLookup.key === key && cachedLookup.promise) return cachedLookup.promise;
+      const cached = state.studentSummaryCache.get(studentCode);
+      if (cached && (Date.now() - cached.cachedAt) < 60000) {
+        return Promise.resolve(cached.data);
+      }
 
-      let promise;
-      promise = getDoc(getAdvisorLatestAttendanceSummaryRef(studentCode))
+      const cachedLookup = state.latestAttendanceLookup;
+      if (cachedLookup.key === studentCode && cachedLookup.promise) return cachedLookup.promise;
+
+      const promise = getDoc(getAdvisorLatestAttendanceSummaryRef(studentCode))
         .then((snapshot) => {
-          if (!snapshot.exists()) return { found: false };
-          const summary = snapshot.data();
-          return {
-            found: true,
-            fecha: summary.fecha,
-            asesor: summary.asesor,
-            createdAtMillis: summary.createdAtServer?.toMillis?.() ?? null
-          };
+          const data = !snapshot.exists()
+            ? { found: false }
+            : {
+                found: true,
+                fecha: snapshot.data().fecha,
+                asesor: snapshot.data().asesor,
+                createdAtMillis: snapshot.data().createdAtServer?.toMillis?.() ?? null
+              };
+          state.studentSummaryCache.set(studentCode, { data, cachedAt: Date.now() });
+          return data;
         })
         .finally(() => {
           if (state.latestAttendanceLookup.promise === promise) {
             state.latestAttendanceLookup = { key: '', promise: null };
           }
         });
-      state.latestAttendanceLookup = { key, promise };
+      state.latestAttendanceLookup = { key: studentCode, promise };
       return promise;
     }
 
@@ -1014,9 +876,13 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         (r) => r.registro === clean && r.mesAnio === targetMonth
       );
 
+     clearTimeout(state.studentLookupTimer);
+
       if (matches.length === 0) {
         if (state.currentUser?.role === 'Asesor') {
-          showAdvisorLatestAttendance(clean, matches, requestId);
+          state.studentLookupTimer = setTimeout(() => {
+            showAdvisorLatestAttendance(clean, matches, requestId);
+          }, 300);
           return;
         }
         alertBox.classList.add('hidden');
@@ -1100,9 +966,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       observation.append(observationLabel, observationText);
       card.appendChild(observation);
 
-      latestAttendance.appendChild(card);
+    latestAttendance.appendChild(card);
       if (state.currentUser?.role === 'Asesor') {
-        showAdvisorLatestAttendance(clean, matches, requestId);
+        state.studentLookupTimer = setTimeout(() => {
+          showAdvisorLatestAttendance(clean, matches, requestId);
+        }, 300);
       }
     };
 
@@ -1161,21 +1029,17 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       try {
         const colRef = collection(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones');
         const recordRef = doc(colRef);
-        let writePromise;
-        if (state.currentUser?.role === 'Asesor') {
-          const batch = writeBatch(state.firebase.db);
-          batch.set(recordRef, newPayload);
-          batch.set(
-            getAdvisorLatestAttendanceSummaryRef(registro),
-            createAdvisorAttendanceSummaryData(registro, {
-              ...newPayload,
-              id: recordRef.id
-            })
-          );
-          writePromise = batch.commit();
-        } else {
-          writePromise = setDoc(recordRef, newPayload);
-        }
+        const batch = writeBatch(state.firebase.db);
+        batch.set(recordRef, newPayload);
+        batch.set(
+          getAdvisorLatestAttendanceSummaryRef(registro),
+          createAdvisorAttendanceSummaryData(registro, {
+            ...newPayload,
+            id: recordRef.id
+          })
+        );
+        const writePromise = batch.commit();
+        state.studentSummaryCache.delete(registro);
         const queuedRecord = { id: recordRef.id, ...newPayload, pendingSync: true };
 
         state.records = [queuedRecord, ...state.records.filter((record) => record.id !== recordRef.id)];
@@ -1197,20 +1061,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           state.firebase.pendingWrites = state.records.filter((record) => record.pendingSync).length;
           updateFirebaseStatusUI(state.firebase.connected, state.firebase.app?.options.projectId, true);
           refreshAllViews();
-          const summaryUpdate = state.currentUser?.role === 'Administrador'
-            ? updateLatestAttendanceSummary(recordRef, newPayload)
-            : Promise.resolve();
-          summaryUpdate
-            .then(() => {
-              showToast(`Registro ${registro} sincronizado con Firebase.`, 'success');
-            })
-            .catch((summaryError) => {
-              console.error('Error actualizando resumen de última atención:', summaryError);
-              showToast(
-                `El registro se guardó, pero no se actualizó la última atención (${summaryError?.code || 'error-desconocido'}).`,
-                'error'
-              );
-            });
+          showToast(`Registro ${registro} sincronizado con Firebase.`, 'success');
         }).catch((err) => {
           console.error('Error guardando en Firestore:', err);
           state.records = state.records.filter((record) => record.id !== recordRef.id);
@@ -1430,9 +1281,24 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       });
     }
 
-    window.resetHistoryPageAndRender = function () {
+    window.resetHistoryPageAndRender = async function () {
       state.historyPage = 1;
       renderHistoryTable();
+
+      const monthFilter = document.getElementById('hist-filter-month')?.value || 'ALL';
+      const dateRange = getDateRangeFilter('hist');
+      if (!dateRange.valid) return;
+
+      const monthsNeeded = dateRange.hasRange
+        ? getMonthsBetweenDates(dateRange.from, dateRange.to)
+        : monthFilter === 'ALL'
+          ? getRecentMonthsList(12)
+          : [monthFilter];
+
+      const loadedNew = await ensureMonthsLoaded(monthsNeeded);
+      if (loadedNew) {
+        renderHistoryTable();
+      }
     };
 
     window.clearHistoryFilters = function () {
@@ -1976,7 +1842,22 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       renderAdvisorsChart(periodAllRecords);
     }
 
-    window.renderMonthlyReport = renderMonthlyReport;
+    window.renderMonthlyReport = async function () {
+      renderMonthlyReport();
+
+      const selectedMonth = document.getElementById('report-month-select')?.value || getTodayISO().slice(0, 7);
+      const dateRange = getDateRangeFilter('report');
+      if (!dateRange.valid) return;
+
+      const monthsNeeded = dateRange.hasRange
+        ? getMonthsBetweenDates(dateRange.from, dateRange.to)
+        : [selectedMonth];
+
+      const loadedNew = await ensureMonthsLoaded(monthsNeeded);
+      if (loadedNew) {
+        renderMonthlyReport();
+      }
+    };
 
     window.clearReportFilters = function () {
       document.getElementById('report-month-select').value = getTodayISO().slice(0, 7);
@@ -2306,7 +2187,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
     function populateDynamicFilters() {
       const currentMonth = getTodayISO().slice(0, 7);
-      const monthsSet = new Set([currentMonth]);
+      const monthsSet = new Set([currentMonth, ...getRecentMonthsList(12)]);
       const advisorsSet = new Set();
       if (state.currentUser?.name) advisorsSet.add(state.currentUser.name);
 
