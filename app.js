@@ -642,9 +642,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     }
 
     window.handleAuthSubmit = async function (e) {
-      e.preventDefault();
-      const email = document.getElementById('auth-email').value.trim().toLowerCase();
-      const password = document.getElementById('auth-password').value;
+  e.preventDefault();
+  const email = document.getElementById('auth-email').value.trim().toLowerCase();
+  const passwordInput = document.getElementById('auth-password');
+  passwordInput.type = 'password';
+  const password = passwordInput.value;
 
       if (!state.firebase.initialized || !state.firebase.auth) {
         showToast('Firebase no está disponible. Verifique la conexión e inténtelo de nuevo.', 'error');
@@ -798,12 +800,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         'aria-label',
         `Canal de atención: ${isWati ? 'WATI' : 'Plataforma'}`
       );
-      button.className = isWati
+     button.className = isWati
         ? 'inline-flex items-center gap-2 px-2.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold border bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 transition'
-        : 'inline-flex items-center gap-2 px-2.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold border bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 transition';
+        : 'inline-flex items-center gap-2 px-2.5 py-2 rounded-xl text-[10px] sm:text-xs font-bold border bg-slate-50 text-[#C8102E] border-slate-200 hover:bg-slate-100 transition';
       indicator.className = isWati
         ? 'w-2.5 h-2.5 rounded-full bg-emerald-500'
-        : 'w-2.5 h-2.5 rounded-full bg-slate-400';
+        : 'w-2.5 h-2.5 rounded-full bg-[#C8102E]';
     }
 
     window.toggleChannelMode = function () {
@@ -1337,10 +1339,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
                 }">${escapeHtml(rec.registro)}</span>
                 ${isRepeat ? '<span class="text-[10px] font-extrabold text-orange-600 uppercase">Re-consulta</span>' : ''}
                 ${rec.pendingSync ? '<span class="text-[10px] font-extrabold text-amber-700 uppercase">Pendiente de sincronizar</span>' : ''}
-                <span class="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
+               <span class="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
                   rec.canalAtencion === 'wati'
                     ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-100 text-slate-600'
+                    : 'bg-red-100 text-[#C8102E]'
                 }">${rec.canalAtencion === 'wati' ? 'WATI' : 'Plataforma'}</span>
                 <span class="text-[11px] text-slate-400 truncate">• ${escapeHtml(rec.observaciones || '-')}</span>
               </div>
@@ -1509,7 +1511,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
                 <span class="px-2 py-1 rounded-md text-[10px] font-bold ${
                   rec.canalAtencion === 'wati'
                     ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-100 text-slate-600'
+                    : 'bg-red-100 text-[#C8102E]'
                 }">${rec.canalAtencion === 'wati' ? 'WATI' : 'Plataforma'}</span>
               </td>
               <td class="py-2.5 px-3 text-slate-600 font-semibold border-r border-slate-100">${escapeHtml(rec.asesor)}</td>
@@ -2335,12 +2337,59 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       return `${MONTH_NAMES_ES[idx] || m} ${y}`;
     }
 
-    // =========================================================================
-    // 14. ARRANQUE INICIAL DE LA APLICACIÓN
-    // =========================================================================
-    window.addEventListener('DOMContentLoaded', async () => {
-      renderProcedureButtons();
-      renderQuickObsTags();
+    function setupPasswordHoldReveal() {
+  const passwordInput = document.getElementById('auth-password');
+  const toggleBtn = document.getElementById('toggle-password-btn');
+  const eyeShow = document.getElementById('eye-icon-show');
+  const eyeHide = document.getElementById('eye-icon-hide');
+  if (!passwordInput || !toggleBtn || !eyeShow || !eyeHide) return;
+
+  const revealPassword = () => {
+    passwordInput.type = 'text';
+    toggleBtn.setAttribute('aria-pressed', 'true');
+    eyeShow.classList.add('hidden');
+    eyeHide.classList.remove('hidden');
+  };
+
+  const hidePassword = () => {
+    passwordInput.type = 'password';
+    toggleBtn.setAttribute('aria-pressed', 'false');
+    eyeShow.classList.remove('hidden');
+    eyeHide.classList.add('hidden');
+  };
+
+  toggleBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    revealPassword();
+  });
+
+  ['pointerup', 'pointerleave', 'pointercancel', 'blur'].forEach((eventName) => {
+    toggleBtn.addEventListener(eventName, hidePassword);
+  });
+
+  toggleBtn.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      revealPassword();
+    }
+  });
+
+  toggleBtn.addEventListener('keyup', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      hidePassword();
+    }
+  });
+
+  window.addEventListener('pointerup', hidePassword);
+}
+
+// =========================================================================
+// 14. ARRANQUE INICIAL DE LA APLICACIÓN
+// =========================================================================
+window.addEventListener('DOMContentLoaded', async () => {
+  renderProcedureButtons();
+  renderQuickObsTags();
+  setupPasswordHoldReveal();
 
       try {
         const envConfig = typeof __firebase_config !== 'undefined' && __firebase_config
