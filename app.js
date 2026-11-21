@@ -95,8 +95,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // 2. ESTADO GLOBAL EN MEMORIA
     // =========================================================================
     const state = {
-      currentUser: null, // { name, email, role, uid }
+      currentUser: null,
       channelAtencion: 'plataforma',
+      reportChannelFilter: 'ALL',
       activeTab: 'registro',
       records: [], // Todos los registros sincronizados (Firestore o sesión activa)
       selectedProcedures: new Set(),
@@ -738,6 +739,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           }
           state.currentUser = null;
           state.channelAtencion = 'plataforma';
+          state.reportChannelFilter = 'ALL';
           updateChannelModeUI();
           state.records = [];
           state.latestAttendanceLookup = { key: '', promise: null };
@@ -1692,37 +1694,128 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // =========================================================================
     // 10. DASHBOARD DE REPORTE MENSUAL, KPIs Y GRÁFICOS (Chart.js)
     // =========================================================================
-    function getFilteredReportRecords(advisorFilter) {
+   function getFilteredReportRecords(advisorFilter, channelFilter = state.reportChannelFilter) {
       const selectedMonth = document.getElementById('report-month-select').value || getTodayISO().slice(0, 7);
       const selectedAdvisor = advisorFilter
         || document.getElementById('report-advisor-select').value
         || 'ALL';
+      const selectedChannel = channelFilter || 'ALL';
       const dateRange = getDateRangeFilter('report');
 
       return state.records.filter((record) => {
         if (!isDateInRange(record.fecha || '', dateRange)) return false;
         if (!dateRange.hasRange && record.mesAnio !== selectedMonth) return false;
-        return selectedAdvisor === 'ALL' || record.asesor === selectedAdvisor;
+        if (selectedAdvisor !== 'ALL' && record.asesor !== selectedAdvisor) return false;
+        if (selectedChannel !== 'ALL' && record.canalAtencion !== selectedChannel) return false;
+        return true;
       });
+    }
+
+    window.setReportChannelFilter = function (channel) {
+      state.reportChannelFilter = ['wati', 'plataforma'].includes(channel) ? channel : 'ALL';
+      renderMonthlyReport();
+    };
+
+    function updateReportChannelUI() {
+      const active = state.reportChannelFilter || 'ALL';
+      const btnAll = document.getElementById('report-channel-btn-ALL');
+      const btnPlat = document.getElementById('report-channel-btn-plataforma');
+      const btnWati = document.getElementById('report-channel-btn-wati');
+      const dotPlat = document.getElementById('report-channel-dot-plataforma');
+      const dotWati = document.getElementById('report-channel-dot-wati');
+      const statusBadge = document.getElementById('report-channel-status-badge');
+      const cardPlat = document.getElementById('kpi-card-platform');
+      const cardWati = document.getElementById('kpi-card-wati');
+      const badgePlat = document.getElementById('kpi-badge-platform');
+      const badgeWati = document.getElementById('kpi-badge-wati');
+
+      const baseBtn = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition';
+      const inactiveBtn = `${baseBtn} bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100`;
+
+      if (btnAll) {
+        btnAll.className = active === 'ALL'
+          ? `${baseBtn} bg-slate-800 text-white border-slate-800 shadow-sm`
+          : inactiveBtn;
+      }
+      if (btnPlat) {
+        btnPlat.className = active === 'plataforma'
+          ? `${baseBtn} bg-[#C8102E] text-white border-[#C8102E] shadow-sm`
+          : inactiveBtn;
+      }
+      if (btnWati) {
+        btnWati.className = active === 'wati'
+          ? `${baseBtn} bg-emerald-600 text-white border-emerald-600 shadow-sm`
+          : inactiveBtn;
+      }
+
+      if (dotPlat) {
+        dotPlat.className = `w-2 h-2 rounded-full ${active === 'plataforma' ? 'bg-white' : 'bg-[#C8102E]'}`;
+      }
+      if (dotWati) {
+        dotWati.className = `w-2 h-2 rounded-full ${active === 'wati' ? 'bg-white' : 'bg-emerald-500'}`;
+      }
+
+      if (statusBadge) {
+        if (active === 'wati') {
+          statusBadge.textContent = 'Mostrando solo WATI';
+          statusBadge.className = 'px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        } else if (active === 'plataforma') {
+          statusBadge.textContent = 'Mostrando solo Plataforma';
+          statusBadge.className = 'px-3 py-1 rounded-full text-[11px] font-bold bg-[#FDF2F4] text-[#C8102E] border border-red-200';
+        } else {
+          statusBadge.textContent = 'Mostrando todos los canales';
+          statusBadge.className = 'px-3 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200';
+        }
+      }
+
+      if (cardPlat && badgePlat) {
+        if (active === 'plataforma') {
+          cardPlat.className = 'bg-[#FDF2F4]/40 p-4 rounded-2xl border-2 border-[#C8102E] ring-4 ring-red-100 shadow-md transition-all duration-200';
+          badgePlat.classList.remove('hidden');
+        } else if (active === 'wati') {
+          cardPlat.className = 'bg-white p-4 rounded-2xl border border-slate-200 shadow-sm opacity-50 transition-all duration-200';
+          badgePlat.classList.add('hidden');
+        } else {
+          cardPlat.className = 'bg-white p-4 rounded-2xl border border-red-200 shadow-sm transition-all duration-200';
+          badgePlat.classList.add('hidden');
+        }
+      }
+
+      if (cardWati && badgeWati) {
+        if (active === 'wati') {
+          cardWati.className = 'bg-emerald-50/40 p-4 rounded-2xl border-2 border-emerald-500 ring-4 ring-emerald-100 shadow-md transition-all duration-200';
+          badgeWati.classList.remove('hidden');
+        } else if (active === 'plataforma') {
+          cardWati.className = 'bg-white p-4 rounded-2xl border border-slate-200 shadow-sm opacity-50 transition-all duration-200';
+          badgeWati.classList.add('hidden');
+        } else {
+          cardWati.className = 'bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm transition-all duration-200';
+          badgeWati.classList.add('hidden');
+        }
+      }
     }
 
     function renderMonthlyReport() {
       updateReportAdvisorsHeading();
+      updateReportChannelUI();
       const selectedMonth = document.getElementById('report-month-select').value || getTodayISO().slice(0, 7);
       const selectedAdvisor = document.getElementById('report-advisor-select').value || 'ALL';
+      const selectedChannel = state.reportChannelFilter || 'ALL';
       const dateRange = getDateRangeFilter('report');
 
-      const periodAllRecords = getFilteredReportRecords('ALL');
-      const filteredRecords = getFilteredReportRecords(selectedAdvisor);
+      const periodAllRecords = getFilteredReportRecords('ALL', selectedChannel);
+      const advisorAllChannelsRecords = getFilteredReportRecords(selectedAdvisor, 'ALL');
+      const filteredRecords = getFilteredReportRecords(selectedAdvisor, selectedChannel);
 
       const totalAttentions = filteredRecords.length;
-      const watiAttentions = filteredRecords.filter((record) => record.canalAtencion === 'wati').length;
-      const platformAttentions = totalAttentions - watiAttentions;
-      const platformPct = totalAttentions > 0
-        ? Math.round((platformAttentions / totalAttentions) * 100)
+      const totalChannelBase = advisorAllChannelsRecords.length;
+      const watiAttentions = advisorAllChannelsRecords.filter((record) => record.canalAtencion === 'wati').length;
+      const platformAttentions = totalChannelBase - watiAttentions;
+      const platformPct = totalChannelBase > 0
+        ? Math.round((platformAttentions / totalChannelBase) * 100)
         : 0;
-      const watiPct = totalAttentions > 0
-        ? Math.round((watiAttentions / totalAttentions) * 100)
+      const watiPct = totalChannelBase > 0
+        ? Math.round((watiAttentions / totalChannelBase) * 100)
         : 0;
 
       document.getElementById('kpi-channel-platform-count').textContent =
@@ -1734,7 +1827,6 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('kpi-channel-wati-pct').textContent = `${watiPct}%`;
       document.getElementById('kpi-channel-wati-bar').style.width = `${watiPct}%`;
 
-      // Meta mensual (1,000 - 1,500 por asesor; escalable si es vista global de varios asesores)
       const uniqueAdvisorsInPeriod = new Set(periodAllRecords.map((r) => r.asesor));
       const advisorMultiplier = selectedAdvisor === 'ALL' ? Math.max(1, uniqueAdvisorsInPeriod.size) : 1;
       const minGoal = 1000 * advisorMultiplier;
@@ -1744,19 +1836,33 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         ? null
         : Math.min(100, Math.round((totalAttentions / midGoal) * 100));
 
-      document.getElementById('kpi-goal-badge').textContent =
-        dateRange.hasRange
-          ? 'Rango seleccionado'
-          : `Meta: ${minGoal.toLocaleString('es-BO')}-${maxGoal.toLocaleString('es-BO')}`;
+     const isWatiTheme = selectedChannel === 'wati';
+
+      const goalBadgeEl = document.getElementById('kpi-goal-badge');
+      goalBadgeEl.textContent = dateRange.hasRange
+        ? 'Rango seleccionado'
+        : `Meta: ${minGoal.toLocaleString('es-BO')}-${maxGoal.toLocaleString('es-BO')}`;
+      goalBadgeEl.className = isWatiTheme
+        ? 'px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700'
+        : 'px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E]';
+
       document.getElementById('kpi-total-attentions').textContent = totalAttentions.toLocaleString('es-BO');
-      document.getElementById('kpi-goal-pct').textContent = goalPct === null ? '—' : `${goalPct}%`;
-      document.getElementById('kpi-goal-bar').style.width = `${goalPct || 0}%`;
+
+      const goalPctEl = document.getElementById('kpi-goal-pct');
+      goalPctEl.textContent = goalPct === null ? '—' : `${goalPct}%`;
+      goalPctEl.className = isWatiTheme ? 'text-emerald-700 font-bold' : 'text-[#C8102E] font-bold';
+
+      const goalBarEl = document.getElementById('kpi-goal-bar');
+      goalBarEl.style.width = `${goalPct || 0}%`;
+      goalBarEl.className = isWatiTheme
+        ? 'h-full bg-emerald-600 rounded-full transition-all duration-500'
+        : 'h-full bg-[#C8102E] rounded-full transition-all duration-500';
+
       document.getElementById('kpi-total-label').textContent =
         dateRange.hasRange ? 'Total Atenciones del Periodo' : 'Total Atenciones Mes';
       document.getElementById('kpi-goal-caption').textContent =
         dateRange.hasRange ? 'Meta mensual no aplicable' : 'Cumplimiento meta';
 
-      // Estudiantes únicos vs Re-consultas
       const studentFreq = new Map();
       filteredRecords.forEach((r) => {
         studentFreq.set(r.registro, (studentFreq.get(r.registro) || 0) + 1);
@@ -1770,7 +1876,6 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('kpi-repeat-rate').textContent =
         `${repeatPct}% de atenciones recurrentes en el ${dateRange.hasRange ? 'periodo' : 'mes'}`;
 
-      // Conteo de los 11 trámites (Qué más pidieron los estudiantes)
       const procCounts = PROCEDURES.map((p) => {
         let count = 0;
         filteredRecords.forEach((r) => {
@@ -1782,18 +1887,29 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const totalProcMarks = procCounts.reduce((acc, item) => acc + item.count, 0);
       document.getElementById('total-marks-badge').textContent = `${totalProcMarks.toLocaleString('es-BO')} trámites (X)`;
 
+      const topProcDotEl = document.getElementById('kpi-top-procedure-dot');
+      if (topProcDotEl) {
+        topProcDotEl.className = isWatiTheme
+          ? 'w-2.5 h-2.5 rounded-full bg-emerald-500'
+          : 'w-2.5 h-2.5 rounded-full bg-[#C8102E]';
+      }
+
+      const topProcEl = document.getElementById('kpi-top-procedure');
+      topProcEl.className = isWatiTheme
+        ? 'text-xl font-black text-emerald-700 truncate mt-1'
+        : 'text-xl font-black text-[#C8102E] truncate mt-1';
+
       const topProc = procCounts[0];
       if (topProc && topProc.count > 0) {
         const sharePct = totalProcMarks > 0 ? ((topProc.count / totalProcMarks) * 100).toFixed(1) : '0.0';
-        document.getElementById('kpi-top-procedure').textContent = topProc.label;
+        topProcEl.textContent = topProc.label;
         document.getElementById('kpi-top-procedure-stats').textContent =
           `${topProc.count.toLocaleString('es-BO')} solicitudes (${sharePct}% de trámites)`;
       } else {
-        document.getElementById('kpi-top-procedure').textContent = 'Sin datos';
+        topProcEl.textContent = 'Sin datos';
         document.getElementById('kpi-top-procedure-stats').textContent = '0 solicitudes';
       }
 
-      // Evolución diaria y Promedio diario
       const dailyMap = new Map();
       filteredRecords.forEach((r) => {
         dailyMap.set(r.fecha, (dailyMap.get(r.fecha) || 0) + 1);
@@ -1814,34 +1930,47 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('kpi-peak-day').textContent =
         peakCount > 0 ? `Día pico: ${peakDate} (${peakCount} est.)` : 'Día pico: -';
 
-      // Tabla de desglose de trámites
       document.getElementById('report-procedures-table').innerHTML = procCounts.map((item, idx) => {
         const pct = totalProcMarks > 0 ? ((item.count / totalProcMarks) * 100).toFixed(1) : '0.0';
+        const rankBadgeClass = idx < 3
+          ? (isWatiTheme ? 'bg-emerald-600 text-white' : 'bg-[#C8102E] text-white')
+          : 'bg-slate-100 text-slate-600';
+        const pctTextClass = isWatiTheme ? 'text-emerald-700' : 'text-[#C8102E]';
         return `
           <tr class="hover:bg-slate-50">
             <td class="py-2 px-2.5 font-bold text-slate-800 flex items-center gap-2">
-              <span class="w-4 h-4 rounded text-[10px] font-black flex items-center justify-center ${
-                idx < 3 ? 'bg-[#C8102E] text-white' : 'bg-slate-100 text-slate-600'
-              }">${idx + 1}</span>
+              <span class="w-4 h-4 rounded text-[10px] font-black flex items-center justify-center ${rankBadgeClass}">${idx + 1}</span>
               <span>${item.label}</span>
             </td>
             <td class="py-2 px-2 text-right font-extrabold text-slate-900">${item.count.toLocaleString('es-BO')}</td>
-            <td class="py-2 px-2.5 text-right font-bold text-[#C8102E]">${pct}%</td>
+            <td class="py-2 px-2.5 text-right font-bold ${pctTextClass}">${pct}%</td>
           </tr>
         `;
       }).join('');
 
-      // Actualizar metadatos para impresión ejecutiva
       const periodLabel = dateRange.hasRange
         ? `Del ${dateRange.from ? formatDateDisplay(dateRange.from) : 'inicio'} al ${dateRange.to ? formatDateDisplay(dateRange.to) : 'presente'}`
         : formatMonthName(selectedMonth);
+      const channelSuffix = selectedChannel === 'wati'
+        ? ' — Solo WATI'
+        : selectedChannel === 'plataforma'
+          ? ' — Solo Plataforma'
+          : '';
+      const channelMetaLabel = selectedChannel === 'wati'
+        ? 'Solo WATI'
+        : selectedChannel === 'plataforma'
+          ? 'Solo Plataforma'
+          : 'Todos los canales';
+
       document.getElementById('report-title').textContent =
-        dateRange.hasRange ? 'Reporte de Atención SAE' : 'Reporte Mensual de Atención SAE';
+        (dateRange.hasRange ? 'Reporte de Atención SAE' : 'Reporte Mensual de Atención SAE') + channelSuffix;
       document.getElementById('print-meta-period').textContent = `Periodo: ${periodLabel}`;
       document.getElementById('print-meta-advisor').textContent =
         `Asesor: ${selectedAdvisor === 'ALL' ? 'Consolidado General SAE' : selectedAdvisor}`;
+      const printChannelEl = document.getElementById('print-meta-channel');
+      if (printChannelEl) printChannelEl.textContent = `Canal: ${channelMetaLabel}`;
       document.getElementById('print-meta-date').textContent = `Generado: ${formatDateDisplay(getTodayISO())}`;
-      // Renderizar los 3 gráficos interactivos
+
       renderProceduresChart(procCounts);
       renderDailyTrendChart(selectedMonth, dailyMap, dateRange.hasRange);
       renderAdvisorsChart(periodAllRecords);
@@ -1855,6 +1984,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('report-date-to').value = '';
       document.getElementById('report-advisor-select').value =
         state.currentUser?.role === 'Asesor' ? state.currentUser.name : 'ALL';
+      state.reportChannelFilter = 'ALL';
       renderMonthlyReport();
     };
 
@@ -1868,9 +1998,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         : 'Distribución de carga operativa entre asesores SAE';
     }
 
-    function renderProceduresChart(procCounts) {
+   function renderProceduresChart(procCounts) {
       const ctx = document.getElementById('chart-procedures').getContext('2d');
       if (state.charts.procedures) state.charts.procedures.destroy();
+      const isWati = state.reportChannelFilter === 'wati';
 
       state.charts.procedures = new Chart(ctx, {
         type: 'bar',
@@ -1879,7 +2010,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           datasets: [{
             label: 'Solicitudes (X)',
             data: procCounts.map((p) => p.count),
-            backgroundColor: procCounts.map((_, i) => i === 0 ? '#C8102E' : i < 3 ? '#E11D48' : '#63666A'),
+            backgroundColor: procCounts.map((_, i) =>
+              isWati
+                ? (i === 0 ? '#059669' : i < 3 ? '#10B981' : '#63666A')
+                : (i === 0 ? '#C8102E' : i < 3 ? '#E11D48' : '#63666A')
+            ),
             borderRadius: 6,
             barPercentage: 0.72
           }]
@@ -1913,6 +2048,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     function renderDailyTrendChart(selectedMonth, dailyMap, hasDateRange) {
       const ctx = document.getElementById('chart-daily-trend').getContext('2d');
       if (state.charts.daily) state.charts.daily.destroy();
+      const isWati = state.reportChannelFilter === 'wati';
 
       const labels = [];
       const values = [];
@@ -1941,14 +2077,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           datasets: [{
             label: 'Estudiantes Atendidos',
             data: values,
-            borderColor: '#C8102E',
-            backgroundColor: 'rgba(200, 16, 46, 0.12)',
+            borderColor: isWati ? '#059669' : '#C8102E',
+            backgroundColor: isWati ? 'rgba(16, 185, 129, 0.14)' : 'rgba(200, 16, 46, 0.12)',
             borderWidth: 2.5,
             fill: true,
             tension: 0.32,
             pointRadius: 3,
             pointHoverRadius: 6,
-            pointBackgroundColor: '#C8102E'
+            pointBackgroundColor: isWati ? '#059669' : '#C8102E'
           }]
         },
         options: {
@@ -1980,6 +2116,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     function renderAdvisorsChart(periodRecords) {
       const ctx = document.getElementById('chart-advisors').getContext('2d');
       if (state.charts.advisors) state.charts.advisors.destroy();
+      const isWati = state.reportChannelFilter === 'wati';
 
       const advMap = new Map();
       periodRecords.forEach((r) => {
@@ -1995,7 +2132,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           datasets: [{
             label: 'Atenciones del Periodo',
             data: sortedAdvisors.map((a) => a[1]),
-            backgroundColor: ['#C8102E', '#63666A', '#94A3B8', '#E11D48'],
+            backgroundColor: isWati
+              ? ['#059669', '#63666A', '#10B981', '#94A3B8']
+              : ['#C8102E', '#63666A', '#94A3B8', '#E11D48'],
             borderRadius: 8,
             barPercentage: 0.55
           }]
@@ -2036,37 +2175,6 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       return getFilteredReportRecords();
     }
 
-    window.exportToCSV = function (source) {
-      const rows = getRecordsForExport(source);
-      if (rows.length === 0) {
-        showToast('No hay registros para exportar en el filtro actual.', 'error');
-        return;
-      }
-
-      const headers = [
-        'FECHA', 'REGISTRO', 'CANAL',
-        ...PROCEDURES.map((p) => p.label),
-        'OBSERVACIONES', 'ASESOR'
-      ];
-
-      const csvLines = [headers.join(';')];
-      rows.forEach((r) => {
-        const line = [
-          formatDateDisplay(r.fecha),
-          r.registro,
-          r.canalAtencion === 'wati' ? 'WATI' : 'PLATAFORMA',
-          ...PROCEDURES.map((p) => (r.tramites?.[p.key] ? 'X' : '')),
-          `"${(r.observaciones || '').replace(/"/g, '""')}"`,
-          `"${(r.asesor || '').replace(/"/g, '""')}"`
-        ];
-        csvLines.push(line.join(';'));
-      });
-
-      const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-      triggerDownload(blob, `Reporte_Atencion_UTEPSA_SAE_${getTodayISO()}.csv`);
-      showToast(`CSV exportado (${rows.length} registros).`, 'success');
-    };
-
     window.exportToExcelXLS = function (source) {
       const rows = getRecordsForExport(source);
       if (rows.length === 0) {
@@ -2075,44 +2183,86 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
 
       const monthCounts = getStudentMonthCounts(state.records);
-      const advisorTitle = state.currentUser?.name || 'SAE UTEPSA';
+      const selectedFilterAdvisor = source === 'reporte'
+        ? document.getElementById('report-advisor-select')?.value
+        : document.getElementById('hist-filter-advisor')?.value;
+      const advisorTitle = (selectedFilterAdvisor && selectedFilterAdvisor !== 'ALL')
+        ? selectedFilterAdvisor
+        : (state.currentUser?.name || 'SAE UTEPSA');
+
+      const colWidthsPx = [102, 86, 114, 76, 106, 101, 92, 63, 109, 80, 58, 94, 94, 132, 333, 81];
+      const totalTableWidth = colWidthsPx.reduce((acc, w) => acc + w, 0);
+      const colGroupHtml = `<colgroup>${colWidthsPx.map((w) => `<col width="${w}" style="width:${w}px;mso-width-source:userset;">`).join('')}</colgroup>`;
+
+      const thBaseStyle = 'background-color:#C8102E;color:#FFFFFF;font-family:Calibri,sans-serif;font-size:11pt;font-weight:bold;text-align:center;vertical-align:middle;white-space:normal;border:none;padding:4px;';
 
       const tableRowsHtml = rows.map((r) => {
         const isRepeat = (monthCounts.get(`${r.mesAnio}|${r.registro}`) || 0) > 1;
         const regBg = isRepeat ? 'background-color:#F8CBAD;font-weight:bold;' : '';
         const procCols = PROCEDURES.map((p) =>
-          `<td style="text-align:center;border:1px solid #D9D9D9;">${r.tramites?.[p.key] ? 'X' : ''}</td>`
+          `<td style="text-align:center;vertical-align:middle;border:1px solid #D9D9D9;font-family:Calibri,sans-serif;font-size:11pt;">${r.tramites?.[p.key] ? 'X' : ''}</td>`
         ).join('');
 
         return `
           <tr>
-            <td style="text-align:center;border:1px solid #D9D9D9;">${escapeHtml(formatDateDisplay(r.fecha))}</td>
-            <td style="text-align:center;border:1px solid #D9D9D9;${regBg}">${escapeHtml(r.registro)}</td>
-            <td style="text-align:center;border:1px solid #D9D9D9;">${r.canalAtencion === 'wati' ? 'WATI' : 'PLATAFORMA'}</td>
+            <td style="text-align:center;vertical-align:middle;border:1px solid #D9D9D9;font-family:Calibri,sans-serif;font-size:11pt;">${escapeHtml(formatDateDisplay(r.fecha))}</td>
+            <td style="text-align:center;vertical-align:middle;border:1px solid #D9D9D9;font-family:Calibri,sans-serif;font-size:11pt;${regBg}">${escapeHtml(r.registro)}</td>
+            <td style="text-align:center;vertical-align:middle;border:1px solid #D9D9D9;font-family:Calibri,sans-serif;font-size:11pt;">${r.canalAtencion === 'wati' ? 'WATI' : 'PLATAFORMA'}</td>
             ${procCols}
-            <td style="border:1px solid #D9D9D9;">${escapeHtml(r.observaciones || '')}</td>
-            <td style="border:1px solid #D9D9D9;">${escapeHtml(r.asesor || '')}</td>
+            <td style="vertical-align:middle;white-space:normal;border:1px solid #D9D9D9;font-family:Calibri,sans-serif;font-size:11pt;padding:4px 6px;">${escapeHtml(r.observaciones || '')}</td>
+            <td style="text-align:center;vertical-align:middle;border:1px solid #D9D9D9;font-family:Calibri,sans-serif;font-size:11pt;">${escapeHtml(r.asesor || '')}</td>
           </tr>
         `;
       }).join('');
 
       const htmlExcel = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head><meta charset="UTF-8"></head>
+        <head>
+          <meta charset="UTF-8">
+          <!--[if gte mso 9]>
+          <xml>
+            <x:ExcelWorkbook>
+              <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                  <x:Name>Planilla_Atencion_UTEPSA_SAE</x:Name>
+                  <x:WorksheetOptions>
+                    <x:PageSetup>
+                      <x:Layout x:Orientation="Landscape"/>
+                      <x:PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/>
+                    </x:PageSetup>
+                    <x:FitToPage/>
+                    <x:Print>
+                      <x:ValidPrinterInfo/>
+                      <x:FitWidth>1</x:FitWidth>
+                      <x:FitHeight>0</x:FitHeight>
+                    </x:Print>
+                    <x:DoNotDisplayGridlines/>
+                  </x:WorksheetOptions>
+                </x:ExcelWorksheet>
+              </x:ExcelWorksheets>
+            </x:ExcelWorkbook>
+          </xml>
+          <![endif]-->
+          <style>
+            table { border-collapse: collapse; }
+            @page { size: landscape; margin: 0.4in; }
+          </style>
+        </head>
         <body>
-          <table>
-            <tr>
-              <td colspan="4" style="font-size:16px;font-weight:bold;color:#C8102E;">UTEPSA - UNIVERSIDAD TECNOLÓGICA PRIVADA DE SANTA CRUZ</td>
-              <td colspan="7" style="text-align:center;font-weight:bold;color:#C8102E;">"UN GRAN PODER CONLLEVA UNA GRAN RESPONSABILIDAD"</td>
-              <td colspan="5" style="text-align:right;font-weight:bold;color:#C8102E;">${escapeHtml(advisorTitle.toUpperCase())}</td>
+          <table width="${totalTableWidth}" style="width:${totalTableWidth}px;border-collapse:collapse;">
+            ${colGroupHtml}
+            <tr style="height:34px;">
+              <td colspan="4" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:left;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">UTEPSA - UNIVERSIDAD TECNOLÓGICA PRIVADA DE SANTA CRUZ</td>
+              <td colspan="7" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:center;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">"Educar para emprender y servir"</td>
+              <td colspan="5" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:right;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">${escapeHtml(advisorTitle.toUpperCase())}</td>
             </tr>
-            <tr style="background-color:#C8102E;color:#FFFFFF;font-weight:bold;text-align:center;">
-              <th style="border:1px solid #9E0B22;padding:6px;">FECHA</th>
-              <th style="border:1px solid #9E0B22;padding:6px;">REGISTRO</th>
-              <th style="border:1px solid #9E0B22;padding:6px;">CANAL</th>
-              ${PROCEDURES.map((p) => `<th style="border:1px solid #9E0B22;padding:6px;">${p.label}</th>`).join('')}
-              <th style="border:1px solid #9E0B22;padding:6px;">OBSERVACIONES</th>
-              <th style="border:1px solid #9E0B22;padding:6px;">ASESOR</th>
+            <tr style="height:30px;">
+              <th style="${thBaseStyle}width:${colWidthsPx[0]}px;">FECHA</th>
+              <th style="${thBaseStyle}width:${colWidthsPx[1]}px;">REGISTRO</th>
+              <th style="${thBaseStyle}width:${colWidthsPx[2]}px;">CANAL</th>
+              ${PROCEDURES.map((p, idx) => `<th style="${thBaseStyle}width:${colWidthsPx[idx + 3]}px;">${p.label}</th>`).join('')}
+              <th style="${thBaseStyle}width:${colWidthsPx[14]}px;">OBSERVACIONES</th>
+              <th style="${thBaseStyle}width:${colWidthsPx[15]}px;">ASESOR</th>
             </tr>
             ${tableRowsHtml}
           </table>
@@ -2120,8 +2270,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         <\/html>
       `;
 
+      const channelTag = source === 'reporte' && state.reportChannelFilter && state.reportChannelFilter !== 'ALL'
+        ? `_${state.reportChannelFilter.toUpperCase()}`
+        : '';
       const blob = new Blob(['\uFEFF' + htmlExcel], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-      triggerDownload(blob, `Planilla_Atencion_UTEPSA_SAE_${getTodayISO()}.xls`);
+      triggerDownload(blob, `Planilla_Atencion_UTEPSA_SAE${channelTag}_${getTodayISO()}.xls`);
       showToast(`Planilla Excel UTEPSA exportada (${rows.length} registros).`, 'success');
     };
 
