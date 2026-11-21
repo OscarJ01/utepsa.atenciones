@@ -68,9 +68,31 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       appId: '1:448731681018:web:42b72099bfa63eddda3943'
     };
     const INITIAL_ADMIN_EMAIL = 'oscarjunior0327@gmail.com';
+    const CHANNEL_MODE_STORAGE_KEY_PREFIX = 'utepsa-sae-channel-mode:';
+
+    function loadSavedChannelMode(uid) {
+      try {
+        return window.localStorage.getItem(`${CHANNEL_MODE_STORAGE_KEY_PREFIX}${uid}`) === 'wati'
+          ? 'wati'
+          : 'plataforma';
+      } catch (error) {
+        console.error('No se pudo recuperar el canal de atención guardado:', error);
+        showToast('No se pudo recuperar el canal de atención anterior.', 'error');
+        return 'plataforma';
+      }
+    }
+
+    function saveChannelMode(uid, channel) {
+      try {
+        window.localStorage.setItem(`${CHANNEL_MODE_STORAGE_KEY_PREFIX}${uid}`, channel);
+      } catch (error) {
+        console.error('No se pudo guardar el canal de atención:', error);
+        showToast('No se pudo guardar el canal de atención para la próxima actualización.', 'error');
+      }
+    }
 
     // =========================================================================
-    // 2. ESTADO GLOBAL EN MEMORIA (Sin uso de localStorage)
+    // 2. ESTADO GLOBAL EN MEMORIA
     // =========================================================================
     const state = {
       currentUser: null, // { name, email, role, uid }
@@ -650,7 +672,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
     function enterApplication(user) {
       state.currentUser = user;
-      state.channelAtencion = 'plataforma';
+      state.channelAtencion = loadSavedChannelMode(user.uid);
       updateChannelModeUI();
       updateReportAdvisorsHeading();
       state.firebase.summaryBackfillStarted = false;
@@ -784,6 +806,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     window.toggleChannelMode = function () {
       if (!['Asesor', 'Administrador'].includes(state.currentUser?.role)) return;
       state.channelAtencion = state.channelAtencion === 'wati' ? 'plataforma' : 'wati';
+      saveChannelMode(state.currentUser.uid, state.channelAtencion);
       updateChannelModeUI();
     };
 
