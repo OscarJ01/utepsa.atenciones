@@ -473,7 +473,7 @@
 
           <!-- Controles de Búsqueda y Filtrado -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 lg:items-end gap-3 pt-2 border-t border-slate-100">
-            <div class="lg:col-span-3 relative">
+            <div class="lg:col-span-2 relative">
               <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
               <input type="text" id="hist-search" placeholder="N° Registro u Observación..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#C8102E]" />
             </div>
@@ -503,6 +503,14 @@
             <div class="lg:col-span-2">
               <select id="hist-filter-advisor" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#C8102E]">
                 <option value="ALL">Todos los asesores</option>
+              </select>
+            </div>
+
+            <div class="lg:col-span-2">
+              <select id="hist-filter-channel" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:border-[#C8102E]">
+                <option value="ALL">Todos los canales</option>
+                <option value="plataforma">Plataforma</option>
+                <option value="wati">WATI</option>
               </select>
             </div>
 

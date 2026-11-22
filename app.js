@@ -1261,6 +1261,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const monthFilter = document.getElementById('hist-filter-month')?.value || 'ALL';
       const procFilter = document.getElementById('hist-filter-proc')?.value || 'ALL';
       const advisorFilter = document.getElementById('hist-filter-advisor')?.value || 'ALL';
+      const channelFilter = document.getElementById('hist-filter-channel')?.value || 'ALL';
       const onlyRepeats = document.getElementById('hist-filter-repeats')?.checked || false;
       const dateRange = getDateRangeFilter('hist');
 
@@ -1270,6 +1271,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         if (!isDateInRange(r.fecha || '', dateRange)) return false;
         if (!dateRange.hasRange && monthFilter !== 'ALL' && r.mesAnio !== monthFilter) return false;
         if (advisorFilter !== 'ALL' && r.asesor !== advisorFilter) return false;
+        if (channelFilter !== 'ALL' && r.canalAtencion !== channelFilter) return false;
         if (procFilter !== 'ALL' && !r.tramites?.[procFilter]) return false;
         if (onlyRepeats && (monthCounts.get(`${r.mesAnio}|${r.registro}`) || 0) <= 1) return false;
         if (search) {
@@ -1301,14 +1303,15 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
     };
 
-    window.clearHistoryFilters = function () {
+   window.clearHistoryFilters = function () {
       document.getElementById('hist-search').value = '';
       document.getElementById('hist-date-from').value = '';
       document.getElementById('hist-date-to').value = '';
-      document.getElementById('hist-filter-month').value = 'ALL';
+      document.getElementById('hist-filter-month').value = getTodayISO().slice(0, 7);
       document.getElementById('hist-filter-proc').value = 'ALL';
       document.getElementById('hist-filter-advisor').value =
         state.currentUser?.role === 'Asesor' ? state.currentUser.name : 'ALL';
+      document.getElementById('hist-filter-channel').value = 'ALL';
       document.getElementById('hist-filter-repeats').checked = false;
       state.historyPage = 1;
       renderHistoryTable();
@@ -2202,9 +2205,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       // Filtros de Historial
       const histMonth = document.getElementById('hist-filter-month');
       const prevHistMonth = histMonth.value;
+      const hadPrevSelection = histMonth.options.length > 1;
       histMonth.innerHTML = '<option value="ALL">Todos los meses</option>' +
         sortedMonths.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(formatMonthName(m))}</option>`).join('');
-      if (sortedMonths.includes(prevHistMonth)) histMonth.value = prevHistMonth;
+      if (hadPrevSelection && (prevHistMonth === 'ALL' || sortedMonths.includes(prevHistMonth))) {
+        histMonth.value = prevHistMonth;
+      } else {
+        histMonth.value = currentMonth;
+      }
 
       const histProc = document.getElementById('hist-filter-proc');
       if (histProc.options.length <= 1) {
