@@ -128,7 +128,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       loadedMonths: new Set(),
       loadingMonths: new Set(),
       studentSummaryCache: new Map(),
-      studentLookupTimer: null
+      studentLookupTimer: null,
+      activeDateISO: getTodayISO(),
+      dateWatcherInterval: null
     };
 
     function normalizeStudentCodeInput(value) {
@@ -563,6 +565,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         ? 'El administrador puede ajustar la fecha de atención'
         : 'Fecha automática; los asesores no pueden modificarla';
       document.getElementById('quick-stat-today-date').textContent = formatDateDisplay(today);
+      startDateRolloverWatcher();
 
       // Si es supervisor, abrir directamente en Reporte Mensual; si es asesor, en Registro Rápido
       refreshAllViews();
@@ -600,10 +603,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           state.reportChannelFilter = 'ALL';
           updateChannelModeUI();
          state.records = [];
-          state.loadedMonths.clear();
+         state.loadedMonths.clear();
           state.loadingMonths.clear();
           state.studentSummaryCache.clear();
           clearTimeout(state.studentLookupTimer);
+          if (state.dateWatcherInterval) {
+            clearInterval(state.dateWatcherInterval);
+            state.dateWatcherInterval = null;
+          }
           state.latestAttendanceLookup = { key: '', promise: null };
           state.latestAttendanceRequestId += 1;
           state.firebase.summaryBackfillStarted = false;
@@ -2206,9 +2213,6 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         <\/html>
       `;
 
-      const channelTag = source === 'reporte' && state.reportChannelFilter && state.reportChannelFilter !== 'ALL'
-        ? `_${state.reportChannelFilter.toUpperCase()}`
-        : '';
       const blob = new Blob(['\uFEFF' + htmlExcel], { type: 'application/vnd.ms-excel;charset=utf-8;' });
       triggerDownload(blob, `Planilla_Atencion_UTEPSA_SAE${channelTag}_${getTodayISO()}.xls`);
       showToast(`Planilla Excel UTEPSA exportada (${rows.length} registros).`, 'success');
@@ -2462,11 +2466,65 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }).format(new Date(timestamp));
     }
 
-    function formatMonthName(ym) {
+   function formatMonthName(ym) {
       if (!ym || !ym.includes('-')) return ym;
       const [y, m] = ym.split('-');
       const idx = parseInt(m, 10) - 1;
       return `${MONTH_NAMES_ES[idx] || m} ${y}`;
+    }
+
+    function syncActiveCalendarPeriod() {
+      if (!state.currentUser) return;
+      const todayISO = getTodayISO();
+      const previousDateISO = state.activeDateISO;
+      if (!previousDateISO || todayISO === previousDateISO) return;
+
+      const previousMonth = previousDateISO.slice(0, 7);
+      const currentMonth = todayISO.slice(0, 7);
+      state.activeDateISO = todayISO;
+
+      const entryDateInput = document.getElementById('entry-fecha');
+      if (entryDateInput && (state.currentUser.role !== 'Administrador' || entryDateInput.value === previousDateISO)) {
+        entryDateInput.value = todayISO;
+      }
+      document.getElementById('quick-stat-today-date').textContent = formatDateDisplay(todayISO);
+
+      if (currentMonth !== previousMonth) {
+        const histMonth = document.getElementById('hist-filter-month');
+        const repMonth = document.getElementById('report-month-select');
+        const wasHistOnPrevMonth = histMonth?.value === previousMonth;
+        const wasRepOnPrevMonth = repMonth?.value === previousMonth;
+
+        state.loadedMonths.clear();
+        state.records = state.records.filter((r) => r.mesAnio === currentMonth);
+
+        populateDynamicFilters();
+        if (wasHistOnPrevMonth && histMonth) histMonth.value = currentMonth;
+        if (wasRepOnPrevMonth && repMonth) repMonth.value = currentMonth;
+
+        if (state.firebase.db && state.firebase.auth?.currentUser) {
+          startFirestoreRealtimeSync();
+        }
+      }
+
+      refreshAllViews();
+      const currentCode = document.getElementById('entry-registro')?.value.trim();
+      if (currentCode) handleStudentCodeInput(currentCode);
+    }
+
+    function startDateRolloverWatcher() {
+      if (state.dateWatcherInterval) clearInterval(state.dateWatcherInterval);
+      state.activeDateISO = getTodayISO();
+
+      state.dateWatcherInterval = setInterval(syncActiveCalendarPeriod, 30000);
+
+      if (!window.__saeDateWatcherBound) {
+        window.__saeDateWatcherBound = true;
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') syncActiveCalendarPeriod();
+        });
+        window.addEventListener('focus', syncActiveCalendarPeriod);
+      }
     }
 
     function setupPasswordHoldReveal() {
