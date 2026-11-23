@@ -41,15 +41,19 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       { key: 'ex_grado', label: 'EX. DE GRADO / TESIS', short: 'EX. GRADO', hotkey: 'Q' },
     ];
 
+    const QUICK_MODULE_TAGS = ['MOD 0', 'MOD 1', 'MOD 2', 'MOD 3', 'MOD 4', 'MOD 5'];
+
     const QUICK_OBS_TAGS = [
-      'MOD 1',
-      'MOD 2',
-      'MOD 3',
-      'MOD 4',
-      'MOD 5',
-      'HISTORIAL DE NOTAS',
-      'DEFENSA EXTERNA',
-      'INFORMACION'
+      { label: 'OFERTA', value: 'OFERTA', type: 'tramite' },
+      { label: 'CAMBIO MATERIA', value: 'CAMBIO DE MATERIA', type: 'tramite' },
+      { label: 'VINC. CONTRATO', value: 'VINCULACION DE CONTRATO', type: 'tramite' },
+      { label: 'CARTA PLAZO', value: 'CARTA FUERA DE PLAZO', type: 'tramite' },
+      { label: 'DEUDAS', value: 'DEUDAS', type: 'tramite' },
+      { label: 'HIST. NOTAS', value: 'HISTORIAL DE NOTAS', type: 'tramite' },
+      { label: 'DEF. EXTERNA', value: 'DEFENSA EXTERNA', type: 'tramite' },
+      { label: 'INFORMACION', value: 'INFORMACION', type: 'tramite' },
+      { label: 'DERIV. REGISTRO', value: 'DERIVACION A REGISTRO', type: 'derivacion' },
+      { label: 'DERIV. CAJA', value: 'DERIVACION A CAJA', type: 'derivacion' }
     ];
 
     const MONTH_NAMES_ES = [
@@ -721,15 +725,45 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
     function renderQuickObsTags() {
       const container = document.getElementById('quick-obs-tags');
-      container.innerHTML = QUICK_OBS_TAGS.map((tag) => `
-        <button
-          type="button"
-          onclick="applyQuickObsTag('${tag}')"
-          class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-[#FDF2F4] text-slate-700 hover:text-[#C8102E] border border-slate-200 hover:border-red-200 transition"
-        >
-          + ${tag}
-        </button>
-      `).join('');
+
+      const modulesHtml = `
+        <div class="w-full flex flex-wrap items-center gap-1.5 pb-1.5 mb-0.5 border-b border-slate-100">
+          <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mr-1">Módulo:</span>
+          ${QUICK_MODULE_TAGS.map((mod) => {
+            const num = mod.replace('MOD ', '');
+            return `
+              <button
+                type="button"
+                onclick="applyQuickObsTag('${mod}')"
+                title="Insertar Modulo ${num}"
+                class="w-7 h-7 rounded-lg text-xs font-extrabold bg-slate-100 hover:bg-[#C8102E] text-slate-700 hover:text-white border border-slate-200 hover:border-[#C8102E] transition flex items-center justify-center"
+              >
+                ${num}
+              </button>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      const tagsHtml = QUICK_OBS_TAGS.map((item) => {
+        const isDerivacion = item.type === 'derivacion';
+        const styleClasses = isDerivacion
+          ? 'bg-amber-50/80 hover:bg-amber-100 text-amber-800 border-amber-200 hover:border-amber-300'
+          : 'bg-slate-50 hover:bg-[#FDF2F4] text-slate-700 hover:text-[#C8102E] border-slate-200 hover:border-red-200';
+
+        return `
+          <button
+            type="button"
+            onclick="applyQuickObsTag('${item.value}')"
+            title="${item.value}"
+            class="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${styleClasses}"
+          >
+            + ${item.label}
+          </button>
+        `;
+      }).join('');
+
+      container.innerHTML = `${modulesHtml}${tagsHtml}`;
     }
 
     window.applyQuickObsTag = function (tag) {
