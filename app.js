@@ -2214,6 +2214,44 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       showToast(`Planilla Excel UTEPSA exportada (${rows.length} registros).`, 'success');
     };
 
+    window.exportToCSV = function (source) {
+      const rows = getRecordsForExport(source);
+      if (rows.length === 0) {
+        showToast('No hay registros para exportar en el filtro actual.', 'error');
+        return;
+      }
+
+      const headers = [
+        'FECHA',
+        'REGISTRO',
+        'CANAL',
+        ...PROCEDURES.map((p) => p.label),
+        'OBSERVACIONES',
+        'ASESOR'
+      ];
+
+      const escapeCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+      const csvLines = [
+        headers.map(escapeCsv).join(','),
+        ...rows.map((r) => [
+          formatDateDisplay(r.fecha),
+          r.registro,
+          r.canalAtencion === 'wati' ? 'WATI' : 'PLATAFORMA',
+          ...PROCEDURES.map((p) => (r.tramites?.[p.key] ? 'X' : '')),
+          r.observaciones || '',
+          r.asesor || ''
+        ].map(escapeCsv).join(','))
+      ];
+
+      const channelTag = source === 'reporte' && state.reportChannelFilter && state.reportChannelFilter !== 'ALL'
+        ? `_${state.reportChannelFilter.toUpperCase()}`
+        : '';
+      const blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      triggerDownload(blob, `Planilla_Atencion_UTEPSA_SAE${channelTag}_${getTodayISO()}.csv`);
+      showToast(`Archivo CSV exportado (${rows.length} registros).`, 'success');
+    };
+
     window.printExecutiveReport = function () {
       window.print();
     };
