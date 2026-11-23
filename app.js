@@ -97,6 +97,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     const state = {
       currentUser: null,
       channelAtencion: 'plataforma',
+      editChannelAtencion: 'plataforma',
       reportChannelFilter: 'ALL',
       activeTab: 'registro',
       records: [], // Todos los registros sincronizados (Firestore o sesión activa)
@@ -1414,6 +1415,21 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // =========================================================================
     // 9. EDICIÓN Y ELIMINACIÓN DE REGISTROS (SIN confirm() NATIVO)
     // =========================================================================
+    window.selectEditChannel = function (channel) {
+      state.editChannelAtencion = channel === 'wati' ? 'wati' : 'plataforma';
+      const btnPlat = document.getElementById('edit-channel-btn-plataforma');
+      const btnWati = document.getElementById('edit-channel-btn-wati');
+      if (!btnPlat || !btnWati) return;
+
+      if (state.editChannelAtencion === 'wati') {
+        btnWati.className = 'px-3.5 py-2.5 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-800 text-xs font-extrabold flex items-center justify-center gap-2 transition shadow-sm';
+        btnPlat.className = 'px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 text-xs font-extrabold flex items-center justify-center gap-2 transition';
+      } else {
+        btnPlat.className = 'px-3.5 py-2.5 rounded-xl border-2 border-[#C8102E] bg-[#FDF2F4] text-[#C8102E] text-xs font-extrabold flex items-center justify-center gap-2 transition shadow-sm';
+        btnWati.className = 'px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 text-xs font-extrabold flex items-center justify-center gap-2 transition';
+      }
+    };
+
     window.openEditModal = function (recordId) {
       const rec = state.records.find((r) => r.id === recordId);
       if (!rec) return;
@@ -1430,6 +1446,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         ? 'El administrador puede modificar esta fecha'
         : 'Los asesores no pueden modificar la fecha del registro';
       document.getElementById('edit-observaciones').value = rec.observaciones || '';
+      selectEditChannel(rec.canalAtencion === 'wati' ? 'wati' : 'plataforma');
 
       state.editSelectedProcedures.clear();
       PROCEDURES.forEach((p) => {
@@ -1502,18 +1519,19 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         return;
       }
 
-      const tramites = {};
+     const tramites = {};
       PROCEDURES.forEach((p) => {
         tramites[p.key] = state.editSelectedProcedures.has(p.key);
       });
       const mesAnio = fecha.slice(0, 7);
+      const canalAtencion = state.editChannelAtencion === 'wati' ? 'wati' : 'plataforma';
 
       if (state.firebase.db && state.firebase.auth?.currentUser && !id.startsWith('local_')) {
         try {
           const docRef = doc(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones', id);
           const updates = canEditStudentCode
-            ? { registro, fecha, mesAnio, tramites, observaciones }
-            : { tramites, observaciones };
+            ? { registro, fecha, mesAnio, canalAtencion, tramites, observaciones }
+            : { canalAtencion, tramites, observaciones };
           await updateDoc(docRef, updates);
         } catch (err) {
           console.error('Error actualizando en Firestore:', err);
@@ -1523,7 +1541,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       } else {
         const idx = state.records.findIndex((r) => r.id === id);
         if (idx !== -1) {
-          state.records[idx] = { ...state.records[idx], registro, fecha, mesAnio, tramites, observaciones };
+          state.records[idx] = { ...state.records[idx], registro, fecha, mesAnio, canalAtencion, tramites, observaciones };
           refreshAllViews();
         }
       }
