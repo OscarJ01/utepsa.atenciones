@@ -1221,13 +1221,17 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const todayISO = document.getElementById('entry-fecha').value || getTodayISO();
       const currentMonth = todayISO.slice(0, 7);
       const advisorName = state.currentUser?.name || '';
-      const isSupervisor = state.currentUser?.role === 'Supervisor' || state.currentUser?.role === 'Administrador';
+      const isSupervisor = state.currentUser?.role === 'Supervisor';
+      const isAdmin = state.currentUser?.role === 'Administrador';
       const canDeleteRecords = state.currentUser?.role === 'Administrador';
 
-      const monthCounts = getStudentMonthCounts(state.records);
-      const todayRecords = state.records.filter(
-        (r) => r.fecha === todayISO && (isSupervisor || r.asesor === advisorName)
+      const displayRecords = state.records.filter(
+        (r) => isSupervisor || (isAdmin
+          ? r.asesorUid === state.currentUser?.uid
+          : r.asesor === advisorName)
       );
+      const monthCounts = getStudentMonthCounts(displayRecords);
+      const todayRecords = displayRecords.filter((r) => r.fecha === todayISO);
 
       document.getElementById('today-feed-subtitle').textContent =
         `${formatDateDisplay(todayISO)} • ${todayRecords.length} atenciones registradas`;
@@ -1284,10 +1288,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       bindRecordActionHandlers(container);
 
       // Actualizar tarjetas superiores de Registro Rápido
-      const advisorMonthRecords = state.records.filter(
-        (r) => r.mesAnio === currentMonth && (isSupervisor || r.asesor === advisorName)
-      );
-      const goalTarget = isSupervisor ? 2500 : 1250;
+      const advisorMonthRecords = displayRecords.filter((r) => r.mesAnio === currentMonth);
+      const goalTarget = isSupervisor || isAdmin ? 2500 : 1250;
       const pct = Math.min(100, Math.round((advisorMonthRecords.length / goalTarget) * 100));
 
       let repeatRowsCount = 0;
