@@ -108,10 +108,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       selectedProcedures: new Set(),
       editSelectedProcedures: new Set(),
       historyPage: 1,
-      charts: {
+     charts: {
         procedures: null,
         daily: null,
-        advisors: null
+        advisors: null,
+        hourly: null
       },
       firebase: {
         app: null,
@@ -1048,6 +1049,28 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
       const mesAnio = fecha.slice(0, 7);
       const advisorName = state.currentUser?.name || 'Oscar Vargas';
+
+      // Detectar posible duplicado accidental (< 2 minutos con mismos trámites y canal)
+      const nowMs = Date.now();
+      const recentDuplicate = state.records.find((r) => {
+        if (r.registro !== registro || r.fecha !== fecha) return false;
+        if (r.asesorUid && r.asesorUid !== state.currentUser?.uid) return false;
+        if ((r.canalAtencion || 'plataforma') !== state.channelAtencion) return false;
+        if (!r.createdAt || (nowMs - r.createdAt) > 120000) return false;
+        return PROCEDURES.every((p) => Boolean(r.tramites?.[p.key]) === Boolean(tramitesObj[p.key]));
+      });
+
+      if (recentDuplicate && !e.__confirmedDuplicate) {
+        const secsAgo = Math.max(1, Math.round((nowMs - recentDuplicate.createdAt) / 1000));
+        const chosenNames = PROCEDURES.filter((p) => tramitesObj[p.key]).map((p) => p.label).join(', ');
+        openConfirmModal(
+          'Posible Registro Duplicado',
+          `Ya registraste al estudiante ${registro} hace ${secsAgo} segundo(s) con exactamente los mismos trámites (${chosenNames}). ¿Deseas guardarlo nuevamente?`,
+          () => window.handleSaveRecord({ preventDefault() {}, __confirmedDuplicate: true })
+        );
+        return;
+      }
+
       const newPayload = {
         fecha,
         mesAnio,
@@ -1902,6 +1925,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       renderProceduresChart(procCounts);
       renderDailyTrendChart(selectedMonth, dailyMap, dateRange.hasRange);
       renderAdvisorsChart(periodAllRecords);
+      renderHourlyChart(filteredRecords);
     }
 
     window.renderMonthlyReport = async function () {
@@ -2108,9 +2132,97 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       });
     }
 
+    function renderHourlyChart(recordsList) {
+      const canvas = document.getElementById('chart-hourly');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (state.charts.hourly) state.charts.hourly.destroy();
+      const isWati = state.reportChannelFilter === 'wati';
+
+      const hourFormatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/La_Paz',
+        hour: '2-digit',
+        hourCycle: 'h23'
+      });
+
+      const hourCounts = new Map();
+      for (let h = 7; h <= 22; h++) {
+        hourCounts.set(h, 0);
+      }
+
+      recordsList.forEach((r) => {
+        if (!Number.isFinite(r.createdAt) || r.createdAt <= 0) return;
+        const h = parseInt(hourFormatter.format(new Date(r.createdAt)), 10);
+        if (!Number.isNaN(h)) {
+          hourCounts.set(h, (hourCounts.get(h) || 0) + 1);
+        }
+      });
+
+      const sortedHours = Array.from(hourCounts.keys()).sort((a, b) => a - b);
+      const labels = sortedHours.map((h) => `${String(h).padStart(2, '0')}:00`);
+      const values = sortedHours.map((h) => hourCounts.get(h) || 0);
+
+      let peakHourLabel = '-';
+      let peakHourVal = 0;
+      sortedHours.forEach((h) => {
+        const val = hourCounts.get(h) || 0;
+        if (val > peakHourVal) {
+          peakHourVal = val;
+          peakHourLabel = `${String(h).padStart(2, '0')}:00 - ${String(h + 1).padStart(2, '0')}:00`;
+        }
+      });
+
+      const peakBadge = document.getElementById('kpi-peak-hour-badge');
+      if (peakBadge) {
+        peakBadge.textContent = peakHourVal > 0
+          ? `Hora pico: ${peakHourLabel} (${peakHourVal})`
+          : 'Hora pico: -';
+      }
+
+      state.charts.hourly = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Atenciones',
+            data: values,
+            backgroundColor: values.map((v) =>
+              v === peakHourVal && v > 0
+                ? (isWati ? '#059669' : '#C8102E')
+                : (isWati ? 'rgba(16, 185, 129, 0.55)' : 'rgba(200, 16, 46, 0.45)')
+            ),
+            borderRadius: 6,
+            barPercentage: 0.72
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1E293B',
+              padding: 10,
+              cornerRadius: 10
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 10, weight: '600' }, color: '#64748B' }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: '#F1F5F9' },
+              ticks: { precision: 0, font: { size: 11 }, color: '#64748B' }
+            }
+          }
+        }
+      });
+    }
+
     // =========================================================================
     // 11. EXPORTACIÓN EXCEL UTEPSA (.XLS Y .CSV) E IMPRESIÓN EJECUTIVA
-    // =========================================================================
     function getRecordsForExport(source) {
       if (source === 'historial') {
         return getFilteredHistoryRecords();
@@ -2158,6 +2270,62 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         `;
       }).join('');
 
+     let executiveSummaryHtml = '';
+      if (source === 'reporte') {
+        const advisorSummaryMap = new Map();
+        rows.forEach((r) => {
+          const adv = r.asesor || 'Sin asignar';
+          const curr = advisorSummaryMap.get(adv) || { asesor: adv, plataforma: 0, wati: 0, total: 0 };
+          if (r.canalAtencion === 'wati') curr.wati += 1;
+          else curr.plataforma += 1;
+          curr.total += 1;
+          advisorSummaryMap.set(adv, curr);
+        });
+
+        const summaryList = Array.from(advisorSummaryMap.values()).sort((a, b) => b.total - a.total);
+        const totalPlat = summaryList.reduce((acc, s) => acc + s.plataforma, 0);
+        const totalWati = summaryList.reduce((acc, s) => acc + s.wati, 0);
+        const grandTotal = rows.length;
+
+        const sumThStyle = 'background-color:#1E293B;color:#FFFFFF;font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;text-align:center;border:1px solid #1E293B;padding:4px 8px;';
+        const sumTdStyle = 'font-family:Calibri,sans-serif;font-size:10pt;border:1px solid #D9D9D9;padding:4px 8px;';
+
+        executiveSummaryHtml = `
+          <table style="border-collapse:collapse;margin-bottom:14px;">
+            <tr>
+              <td colspan="5" style="font-family:Calibri,sans-serif;font-size:11pt;font-weight:bold;color:#C8102E;padding:4px 2px;">RESUMEN EJECUTIVO POR ASESOR Y CANAL</td>
+            </tr>
+            <tr>
+              <th style="${sumThStyle}text-align:left;width:240px;">ASESOR SAE</th>
+              <th style="${sumThStyle}width:110px;">PLATAFORMA</th>
+              <th style="${sumThStyle}width:110px;">WATI</th>
+              <th style="${sumThStyle}width:110px;">TOTAL</th>
+              <th style="${sumThStyle}width:110px;">% PARTICIPACIÓN</th>
+            </tr>
+            ${summaryList.map((s) => {
+              const pct = grandTotal > 0 ? ((s.total / grandTotal) * 100).toFixed(1) : '0.0';
+              return `
+                <tr>
+                  <td style="${sumTdStyle}font-weight:bold;">${escapeHtml(s.asesor)}</td>
+                  <td style="${sumTdStyle}text-align:center;">${s.plataforma}</td>
+                  <td style="${sumTdStyle}text-align:center;">${s.wati}</td>
+                  <td style="${sumTdStyle}text-align:center;font-weight:bold;">${s.total}</td>
+                  <td style="${sumTdStyle}text-align:center;">${pct}%</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr style="background-color:#F1F5F9;font-weight:bold;">
+              <td style="${sumTdStyle}font-weight:bold;">TOTAL CONSOLIDADO</td>
+              <td style="${sumTdStyle}text-align:center;font-weight:bold;">${totalPlat}</td>
+              <td style="${sumTdStyle}text-align:center;font-weight:bold;">${totalWati}</td>
+              <td style="${sumTdStyle}text-align:center;font-weight:bold;color:#C8102E;">${grandTotal}</td>
+              <td style="${sumTdStyle}text-align:center;font-weight:bold;">100.0%</td>
+            </tr>
+          </table>
+          <br/>
+        `;
+      }
+
       const htmlExcel = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head>
@@ -2191,7 +2359,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
             @page { size: landscape; margin: 0.4in; }
           </style>
         </head>
-        <body>
+       <body>
+          ${executiveSummaryHtml}
           <table width="${totalTableWidth}" style="width:${totalTableWidth}px;border-collapse:collapse;">
             ${colGroupHtml}
             <tr style="height:34px;">
@@ -2213,6 +2382,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         <\/html>
       `;
 
+      const channelTag = source === 'reporte' && state.reportChannelFilter && state.reportChannelFilter !== 'ALL'
+        ? `_${state.reportChannelFilter.toUpperCase()}`
+        : '';
       const blob = new Blob(['\uFEFF' + htmlExcel], { type: 'application/vnd.ms-excel;charset=utf-8;' });
       triggerDownload(blob, `Planilla_Atencion_UTEPSA_SAE${channelTag}_${getTodayISO()}.xls`);
       showToast(`Planilla Excel UTEPSA exportada (${rows.length} registros).`, 'success');
@@ -2527,6 +2699,28 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
     }
 
+    function updateNetworkBannerUI() {
+      const banner = document.getElementById('offline-warning-banner');
+      if (!banner) return;
+      banner.classList.toggle('hidden', navigator.onLine !== false);
+    }
+
+    function setupNetworkStatusWatcher() {
+      updateNetworkBannerUI();
+      if (window.__saeNetworkWatcherBound) return;
+      window.__saeNetworkWatcherBound = true;
+
+      window.addEventListener('offline', () => {
+        updateNetworkBannerUI();
+        showToast('Se perdió la conexión a internet. Modo respaldo local activo.', 'error');
+      });
+
+      window.addEventListener('online', () => {
+        updateNetworkBannerUI();
+        showToast('Conexión restablecida. Sincronizando registros pendientes...', 'success');
+      });
+    }
+
     function setupPasswordHoldReveal() {
   const passwordInput = document.getElementById('auth-password');
   const toggleBtn = document.getElementById('toggle-password-btn');
@@ -2580,6 +2774,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   renderProcedureButtons();
   renderQuickObsTags();
   setupPasswordHoldReveal();
+  setupNetworkStatusWatcher();
 
       try {
         const envConfig = typeof __firebase_config !== 'undefined' && __firebase_config
