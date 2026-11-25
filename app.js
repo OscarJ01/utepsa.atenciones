@@ -32,15 +32,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       { key: 'programacion', label: 'PROGRAMACION', short: 'PROGR.', hotkey: '2', specialOnly: false },
       { key: 'confirmacion', label: 'CONFIRMACION', short: 'CONFIR.', hotkey: '3', specialOnly: false },
       { key: 'plan_pago', label: 'PLAN DE PAGO', short: 'PLAN PAGO', hotkey: '4', specialOnly: false },
-      { key: 'recargo', label: 'RECARGO', short: 'RECARGO', hotkey: '5', specialOnly: true },
-      { key: 'congelamiento', label: 'CONGELAMIENTO', short: 'CONGEL.', hotkey: '6', specialOnly: false },
+     { key: 'recargo', label: 'RECARGO', short: 'RECARGO', hotkey: '5', specialOnly: true },
+      { key: 'congelamiento', label: 'RETIRO / CONGELAMIENTO', short: 'RET./CONG.', hotkey: '6', specialOnly: false },
       { key: 'pro_forma', label: 'PRO-FORMA', short: 'PRO-FORMA', hotkey: '7', specialOnly: true },
       { key: 'abonos', label: 'ABONOS', short: 'ABONOS', hotkey: '8', specialOnly: true },
       { key: 'informacion', label: 'INFORMACION', short: 'INFORM.', hotkey: '9', specialOnly: false },
       { key: 'reingresante', label: 'REINGRESANTE', short: 'REINGR.', hotkey: '0', specialOnly: false },
       { key: 'ex_grado', label: 'EX. DE GRADO / TESIS', short: 'EX. GRADO', hotkey: 'Q', specialOnly: false },
-      { key: 'retiro_materia', label: 'RETIRO DE MATERIA', short: 'RET. MAT.', hotkey: 'W', specialOnly: false },
-      { key: 'cambio_materia', label: 'CAMBIO DE MATERIA', short: 'CAMB. MAT.', hotkey: 'E', specialOnly: false },
+      { key: 'cambio_materia', label: 'CAMBIO DE MATERIA', short: 'CAMB. MAT.', hotkey: 'W', specialOnly: false },
     ];
 
     function isAdvisorRole(role = state.currentUser?.role) {
@@ -1507,7 +1506,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
      if (pageSlice.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="19" class="py-12 text-center text-slate-500">
+          <td colspan="18" class="py-12 text-center text-slate-500">
               No se encontraron registros que coincidan con los filtros seleccionados.
             </td>
           </tr>
@@ -1711,7 +1710,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
       const hasCongelamiento = state.editSelectedProcedures.has('congelamiento');
       if (hasCongelamiento && !['GRATIS', '300', '500'].includes(state.editCongelamientoFee)) {
-        showToast('Seleccione si el congelamiento es Retiro Gratis, 300 Bs o 500 Bs.', 'error');
+        showToast('Seleccione si el retiro/congelamiento es Retiro Gratis, 300 Bs o 500 Bs.', 'error');
         return;
       }
 
@@ -1806,8 +1805,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       tramites: 'Trámites (Gráfico y Tabla)',
       diario: 'Evolución Diaria',
       asesores: 'Asesores y Horarios',
-      congelamientos: 'Congelamientos'
-    };
+    congelamientos: 'Retiro / Congelamiento'
+  };
 
     function applyReportSectionsVisibilityUI() {
       Object.entries(REPORT_SECTION_LABELS).forEach(([key, label]) => {
@@ -2170,7 +2169,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       setTxt('cong-kpi-cartas', `${cartasSi} / ${totalCong}`);
       setTxt('cong-kpi-cartas-pct', `${cartasPct}% con carta entregada`);
       setTxt('cong-kpi-gratis', buckets.GRATIS.count.toLocaleString('es-BO'));
-      setTxt('cong-kpi-gratis-pct', `${gratisPct}% de congelamientos`);
+      setTxt('cong-kpi-gratis-pct', `${gratisPct}% de retiros/congelamientos`);
       setTxt('cong-kpi-pagados', pagadosCount.toLocaleString('es-BO'));
       setTxt('cong-kpi-pagados-desglose', `${buckets['300'].count} de 300 Bs · ${buckets['500'].count} de 500 Bs`);
 
@@ -2180,7 +2179,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       if (totalCong === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="5" class="py-6 text-center text-slate-400">No se registraron congelamientos en el periodo seleccionado.</td>
+           <td colspan="5" class="py-6 text-center text-slate-400">No se registraron retiros/congelamientos en el periodo seleccionado.</td>
           </tr>
         `;
         return;
@@ -2205,9 +2204,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     window.exportCongelamientosExcel = function () {
       const congRows = getFilteredReportRecords().filter((r) => r.tramites?.congelamiento);
       if (congRows.length === 0) {
-        showToast('No hay congelamientos para exportar en el filtro actual.', 'error');
-        return;
-      }
+      showToast('No hay retiros/congelamientos para exportar en el filtro actual.', 'error');
+      return;
+    }
 
       const thStyle = 'background-color:#C8102E;color:#FFFFFF;font-family:Calibri,sans-serif;font-size:11pt;font-weight:bold;text-align:center;border:1px solid #9E0B22;padding:5px 8px;';
       const tdStyle = 'font-family:Calibri,sans-serif;font-size:11pt;border:1px solid #D9D9D9;padding:4px 8px;';
@@ -2242,7 +2241,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         <body>
           <table style="border-collapse:collapse;">
             <tr>
-              <td colspan="7" style="font-family:Calibri,sans-serif;font-size:12pt;font-weight:bold;color:#C8102E;padding:6px 2px;">UTEPSA SAE — CONTROL DE CONGELAMIENTOS Y CARTAS RECEPCIONADAS</td>
+             <td colspan="7" style="font-family:Calibri,sans-serif;font-size:12pt;font-weight:bold;color:#C8102E;padding:6px 2px;">UTEPSA SAE — CONTROL DE RETIRO / CONGELAMIENTO Y CARTAS RECEPCIONADAS</td>
             </tr>
             <tr>
               <th style="${thStyle}">FECHA</th>
@@ -2260,8 +2259,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       `;
 
       const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-      triggerDownload(blob, `Reporte_Congelamientos_UTEPSA_SAE_${getTodayISO()}.xls`);
-      showToast(`Reporte de Congelamientos exportado (${congRows.length} registros).`, 'success');
+      triggerDownload(blob, `Reporte_Retiro_Congelamiento_UTEPSA_SAE_${getTodayISO()}.xls`);
+    showToast(`Reporte de Retiro / Congelamiento exportado (${congRows.length} registros).`, 'success');
     };
 
     window.renderMonthlyReport = async function () {
@@ -2609,7 +2608,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         ? selectedFilterAdvisor
         : (state.currentUser?.name || 'SAE UTEPSA');
 
-      const colWidthsPx = [102, 86, 114, 76, 106, 101, 92, 63, 109, 80, 58, 94, 94, 94, 94, 132, 333, 81];
+      const colWidthsPx = [102, 86, 114, 76, 106, 101, 92, 63, 109, 80, 58, 94, 94, 94, 132, 333, 81];
       const totalTableWidth = colWidthsPx.reduce((acc, w) => acc + w, 0);
       const colGroupHtml = `<colgroup>${colWidthsPx.map((w) => `<col width="${w}" style="width:${w}px;mso-width-source:userset;">`).join('')}</colgroup>`;
 
@@ -2727,19 +2726,19 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           ${executiveSummaryHtml}
           <table width="${totalTableWidth}" style="width:${totalTableWidth}px;border-collapse:collapse;">
             ${colGroupHtml}
-            <tr style="height:34px;">
-              <td colspan="4" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:left;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">UTEPSA - UNIVERSIDAD TECNOLÓGICA PRIVADA DE SANTA CRUZ</td>
-              <td colspan="7" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:center;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">"Educar para emprender y servir"</td>
-              <td colspan="7" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:right;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">${escapeHtml(advisorTitle.toUpperCase())}</td>
-            </tr>
-            <tr style="height:30px;">
-              <th style="${thBaseStyle}width:${colWidthsPx[0]}px;">FECHA</th>
-              <th style="${thBaseStyle}width:${colWidthsPx[1]}px;">REGISTRO</th>
-              <th style="${thBaseStyle}width:${colWidthsPx[2]}px;">CANAL</th>
-              ${PROCEDURES.map((p, idx) => `<th style="${thBaseStyle}width:${colWidthsPx[idx + 3]}px;">${p.label}</th>`).join('')}
-              <th style="${thBaseStyle}width:${colWidthsPx[16]}px;">OBSERVACIONES</th>
-              <th style="${thBaseStyle}width:${colWidthsPx[17]}px;">ASESOR</th>
-            </tr>
+          <tr style="height:34px;">
+            <td colspan="4" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:left;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">UTEPSA - UNIVERSIDAD TECNOLÓGICA PRIVADA DE SANTA CRUZ</td>
+            <td colspan="7" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:center;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">"Educar para emprender y servir"</td>
+            <td colspan="6" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:right;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">${escapeHtml(advisorTitle.toUpperCase())}</td>
+          </tr>
+          <tr style="height:30px;">
+            <th style="${thBaseStyle}width:${colWidthsPx[0]}px;">FECHA</th>
+            <th style="${thBaseStyle}width:${colWidthsPx[1]}px;">REGISTRO</th>
+            <th style="${thBaseStyle}width:${colWidthsPx[2]}px;">CANAL</th>
+            ${PROCEDURES.map((p, idx) => `<th style="${thBaseStyle}width:${colWidthsPx[idx + 3]}px;">${p.label}</th>`).join('')}
+            <th style="${thBaseStyle}width:${colWidthsPx[15]}px;">OBSERVACIONES</th>
+            <th style="${thBaseStyle}width:${colWidthsPx[16]}px;">ASESOR</th>
+          </tr>
             ${tableRowsHtml}
           </table>
         <\/body>
