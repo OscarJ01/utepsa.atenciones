@@ -157,9 +157,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       dateWatcherInterval: null
     };
 
-    function normalizeStudentCodeInput(value) {
+   function normalizeStudentCodeInput(value) {
+      const cleaned = String(value)
+        .toUpperCase()
+        .replace(/[^0-9A]/g, '')
+        .replace(/^0+/, '');
+
       let code = '';
-      for (const character of String(value).toUpperCase()) {
+      for (const character of cleaned) {
         if (/\d/.test(character) && code.length < 6 && !code.endsWith('A')) {
           code += character;
         } else if (character === 'A' && code.length === 5) {
