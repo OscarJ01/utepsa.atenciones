@@ -419,17 +419,18 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       return Timestamp.fromMillis(getAttendanceTimestampMillis(record));
     }
 
-    function getAdvisorLatestAttendanceSummaryRef(studentCode) {
-      return doc(
-        state.firebase.db,
-        'artifacts',
-        appId,
-        'public',
-        'data',
-        'ultimaAtencionAsesores',
-        studentCode
-      );
-    }
+    function getAdvisorLatestAttendanceSummaryRef(studentCode, yearMonth = getTodayISO().slice(0, 7)) {
+    const cleanMonth = /^\d{4}-\d{2}$/.test(yearMonth) ? yearMonth : getTodayISO().slice(0, 7);
+    return doc(
+      state.firebase.db,
+      'artifacts',
+      appId,
+      'public',
+      'data',
+      'ultimaAtencionAsesores',
+      `${cleanMonth}_${studentCode}`
+    );
+  }
 
     function createAdvisorAttendanceSummaryData(studentCode, record) {
       return {
@@ -851,39 +852,41 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       input.focus();
     };
 
-    function getStudentAttendanceSummary(studentCode) {
-      const cached = state.studentSummaryCache.get(studentCode);
-      if (cached && (Date.now() - cached.cachedAt) < 60000) {
-        return Promise.resolve(cached.data);
-      }
-
-      const cachedLookup = state.latestAttendanceLookup;
-      if (cachedLookup.key === studentCode && cachedLookup.promise) return cachedLookup.promise;
-
-      const promise = getDoc(getAdvisorLatestAttendanceSummaryRef(studentCode))
-        .then((snapshot) => {
-          const data = !snapshot.exists()
-            ? { found: false }
-            : {
-                found: true,
-                recordId: snapshot.data().recordId || '',
-                fecha: snapshot.data().fecha,
-                asesor: snapshot.data().asesor,
-                tramites: snapshot.data().tramites || {},
-                observaciones: snapshot.data().observaciones || '',
-                createdAtMillis: snapshot.data().createdAtServer?.toMillis?.() ?? null
-              };
-          state.studentSummaryCache.set(studentCode, { data, cachedAt: Date.now() });
-          return data;
-        })
-        .finally(() => {
-          if (state.latestAttendanceLookup.promise === promise) {
-            state.latestAttendanceLookup = { key: '', promise: null };
-          }
-        });
-      state.latestAttendanceLookup = { key: studentCode, promise };
-      return promise;
+    function getStudentAttendanceSummary(studentCode, yearMonth = getTodayISO().slice(0, 7)) {
+    const cleanMonth = /^\d{4}-\d{2}$/.test(yearMonth) ? yearMonth : getTodayISO().slice(0, 7);
+    const cacheKey = `${cleanMonth}|${studentCode}`;
+    const cached = state.studentSummaryCache.get(cacheKey);
+    if (cached && (Date.now() - cached.cachedAt) < 60000) {
+      return Promise.resolve(cached.data);
     }
+
+    const cachedLookup = state.latestAttendanceLookup;
+    if (cachedLookup.key === cacheKey && cachedLookup.promise) return cachedLookup.promise;
+
+    const promise = getDoc(getAdvisorLatestAttendanceSummaryRef(studentCode, cleanMonth))
+      .then((snapshot) => {
+        const data = !snapshot.exists()
+          ? { found: false }
+          : {
+              found: true,
+              recordId: snapshot.data().recordId || '',
+              fecha: snapshot.data().fecha,
+              asesor: snapshot.data().asesor,
+              tramites: snapshot.data().tramites || {},
+              observaciones: snapshot.data().observaciones || '',
+              createdAtMillis: snapshot.data().createdAtServer?.toMillis?.() ?? null
+            };
+        state.studentSummaryCache.set(cacheKey, { data, cachedAt: Date.now() });
+        return data;
+      })
+      .finally(() => {
+        if (state.latestAttendanceLookup.promise === promise) {
+          state.latestAttendanceLookup = { key: '', promise: null };
+        }
+      });
+    state.latestAttendanceLookup = { key: cacheKey, promise };
+    return promise;
+  }
 
     function buildDetailedAttendanceCard({ headingText, fecha, createdAtMillis, asesor, tramites, observaciones }) {
       const attendanceTime = formatTimeDisplay(createdAtMillis);
@@ -958,14 +961,16 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const latestAttendance = document.getElementById('repeat-alert-history');
       const hasLocalMatches = matches.length > 0;
 
-      const cached = state.studentSummaryCache.get(studentCode);
-      const isCachedFresh = cached && (Date.now() - cached.cachedAt) < 60000;
-      if (!isCachedFresh) {
-        setStudentLookupSpinner(true);
-      }
+      const selectedDateForMonth = document.getElementById('entry-fecha').value || getTodayISO();
+  const targetMonth = selectedDateForMonth.slice(0, 7);
+  const cached = state.studentSummaryCache.get(`${targetMonth}|${studentCode}`);
+  const isCachedFresh = cached && (Date.now() - cached.cachedAt) < 60000;
+  if (!isCachedFresh) {
+    setStudentLookupSpinner(true);
+  }
 
-      try {
-        const latest = await getStudentAttendanceSummary(studentCode);
+  try {
+    const latest = await getStudentAttendanceSummary(studentCode, targetMonth);
         if (
           requestId !== state.latestAttendanceRequestId
           || document.getElementById('entry-registro').value.trim() !== studentCode
@@ -995,15 +1000,16 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           observaciones: latest.observaciones
         });
 
-        alertBox.classList.remove('hidden');
-        if (!hasLocalMatches) {
-          document.getElementById('repeat-alert-badge').textContent = isToday ? '¡Atendido HOY!' : 'Atención previa';
-          document.getElementById('repeat-alert-summary').textContent =
-            `El estudiante ${studentCode} ya fue atendido previamente en SAE. Al guardarse se marcará en naranja como re-consulta.`;
-          latestAttendance.replaceChildren(detailedCard);
-        } else {
-          latestAttendance.replaceChildren(detailedCard);
-        }
+       alertBox.classList.remove('hidden');
+  if (!hasLocalMatches) {
+    document.getElementById('repeat-alert-badge').textContent = isToday ? '¡Atendido HOY!' : 'Atención previa este mes';
+    document.getElementById('repeat-alert-summary').textContent =
+      `El estudiante ${studentCode} ya fue atendido en ${formatMonthName(targetMonth)} por ${latest.asesor}. Al guardarse se marcará en naranja como re-consulta.`;
+  } else {
+    document.getElementById('repeat-alert-summary').textContent =
+      `Registras ${matches.length} atención(es) propia(s) en ${formatMonthName(targetMonth)}. La última atención global del mes fue realizada por ${latest.asesor}.`;
+  }
+  latestAttendance.replaceChildren(detailedCard);
       } catch (error) {
         console.error('Error al consultar el resumen de última atención:', error);
         if (requestId !== state.latestAttendanceRequestId) return;
@@ -1040,11 +1046,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
       const selectedDate = document.getElementById('entry-fecha').value || getTodayISO();
       const targetMonth = selectedDate.slice(0, 7);
-      const matches = state.records.filter(
+     const matches = state.records.filter(
         (r) => r.registro === clean && r.mesAnio === targetMonth
       );
-
-      clearTimeout(state.studentLookupTimer);
 
       if (matches.length === 0) {
      if (isAdvisorRole()) {
@@ -1186,15 +1190,15 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         const recordRef = doc(colRef);
         const batch = writeBatch(state.firebase.db);
         batch.set(recordRef, newPayload);
-        batch.set(
-          getAdvisorLatestAttendanceSummaryRef(registro),
-          createAdvisorAttendanceSummaryData(registro, {
-            ...newPayload,
-            id: recordRef.id
-          })
-        );
-        const writePromise = batch.commit();
-        state.studentSummaryCache.delete(registro);
+       batch.set(
+      getAdvisorLatestAttendanceSummaryRef(registro, mesAnio),
+      createAdvisorAttendanceSummaryData(registro, {
+        ...newPayload,
+        id: recordRef.id
+      })
+    );
+ const writePromise = batch.commit();
+        state.studentSummaryCache.delete(`${mesAnio}|${registro}`);
         const queuedRecord = { id: recordRef.id, ...newPayload, pendingSync: true };
 
         state.records = [queuedRecord, ...state.records.filter((record) => record.id !== recordRef.id)];
