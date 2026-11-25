@@ -28,24 +28,39 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // 1. CONSTANTES INSTITUCIONALES Y CATÁLOGO EXACTO DEL EXCEL UTEPSA
     // =========================================================================
     const PROCEDURES = [
-      { key: 'pensum', label: 'PENSUM', short: 'PENSUM', hotkey: '1' },
-      { key: 'programacion', label: 'PROGRAMACION', short: 'PROGR.', hotkey: '2' },
-      { key: 'confirmacion', label: 'CONFIRMACION', short: 'CONFIR.', hotkey: '3' },
-      { key: 'plan_pago', label: 'PLAN DE PAGO', short: 'PLAN PAGO', hotkey: '4' },
-      { key: 'recargo', label: 'RECARGO', short: 'RECARGO', hotkey: '5' },
-      { key: 'congelamiento', label: 'CONGELAMIENTO', short: 'CONGEL.', hotkey: '6' },
-      { key: 'pro_forma', label: 'PRO-FORMA', short: 'PRO-FORMA', hotkey: '7' },
-      { key: 'abonos', label: 'ABONOS', short: 'ABONOS', hotkey: '8' },
-      { key: 'informacion', label: 'INFORMACION', short: 'INFORM.', hotkey: '9' },
-      { key: 'reingresante', label: 'REINGRESANTE', short: 'REINGR.', hotkey: '0' },
-      { key: 'ex_grado', label: 'EX. DE GRADO / TESIS', short: 'EX. GRADO', hotkey: 'Q' },
+      { key: 'pensum', label: 'PENSUM', short: 'PENSUM', hotkey: '1', specialOnly: true },
+      { key: 'programacion', label: 'PROGRAMACION', short: 'PROGR.', hotkey: '2', specialOnly: false },
+      { key: 'confirmacion', label: 'CONFIRMACION', short: 'CONFIR.', hotkey: '3', specialOnly: false },
+      { key: 'plan_pago', label: 'PLAN DE PAGO', short: 'PLAN PAGO', hotkey: '4', specialOnly: false },
+      { key: 'recargo', label: 'RECARGO', short: 'RECARGO', hotkey: '5', specialOnly: true },
+      { key: 'congelamiento', label: 'CONGELAMIENTO', short: 'CONGEL.', hotkey: '6', specialOnly: false },
+      { key: 'pro_forma', label: 'PRO-FORMA', short: 'PRO-FORMA', hotkey: '7', specialOnly: true },
+      { key: 'abonos', label: 'ABONOS', short: 'ABONOS', hotkey: '8', specialOnly: true },
+      { key: 'informacion', label: 'INFORMACION', short: 'INFORM.', hotkey: '9', specialOnly: false },
+      { key: 'reingresante', label: 'REINGRESANTE', short: 'REINGR.', hotkey: '0', specialOnly: false },
+      { key: 'ex_grado', label: 'EX. DE GRADO / TESIS', short: 'EX. GRADO', hotkey: 'Q', specialOnly: false },
+      { key: 'retiro_materia', label: 'RETIRO DE MATERIA', short: 'RET. MAT.', hotkey: 'W', specialOnly: false },
+      { key: 'cambio_materia', label: 'CAMBIO DE MATERIA', short: 'CAMB. MAT.', hotkey: 'E', specialOnly: false },
     ];
+
+    function isAdvisorRole(role = state.currentUser?.role) {
+      return role === 'Asesor' || role === 'Asesor Especial';
+    }
+
+    function canUserAccessProcedure(proc, role = state.currentUser?.role) {
+      if (!proc?.specialOnly) return true;
+      return role === 'Administrador' || role === 'Asesor Especial';
+    }
+
+    function getAllowedProceduresForCurrentUser() {
+      return PROCEDURES.filter((proc) => canUserAccessProcedure(proc));
+    }
 
     const QUICK_MODULE_TAGS = ['MOD 0', 'MOD 1', 'MOD 2', 'MOD 3', 'MOD 4', 'MOD 5'];
 
     const QUICK_OBS_TAGS = [
       { label: 'OFERTA', value: 'OFERTA', type: 'tramite' },
-      { label: 'CAMBIO MATERIA', value: 'CAMBIO DE MATERIA', type: 'tramite' },
+      { label: 'IMP. BOLETA', value: 'IMPRESION DE BOLETA', type: 'tramite' },
       { label: 'VINC. CONTRATO', value: 'VINCULACION DE CONTRATO', type: 'tramite' },
       { label: 'CARTA PLAZO', value: 'CARTA FUERA DE PLAZO', type: 'tramite' },
       { label: 'DEUDAS', value: 'DEUDAS', type: 'tramite' },
@@ -105,14 +120,23 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       reportChannelFilter: 'ALL',
       activeTab: 'registro',
       records: [], // Todos los registros sincronizados (Firestore o sesión activa)
-      selectedProcedures: new Set(),
+     selectedProcedures: new Set(),
       editSelectedProcedures: new Set(),
+      congelamientoFee: '',
+      editCongelamientoFee: '',
       historyPage: 1,
      charts: {
         procedures: null,
         daily: null,
         advisors: null,
         hourly: null
+      },
+      reportSections: {
+        kpis: true,
+        tramites: true,
+        diario: true,
+        asesores: true,
+        congelamientos: true
       },
       firebase: {
         app: null,
@@ -236,6 +260,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         mesAnio: data.mesAnio || (data.fecha ? data.fecha.slice(0, 7) : getTodayISO().slice(0, 7)),
         registro: String(data.registro || '').trim(),
         tramites: data.tramites || {},
+        congelamientoDetalle: data.congelamientoDetalle || null,
         observaciones: data.observaciones || '',
         asesor: data.asesor || 'Oscar Vargas',
         asesorUid: data.asesorUid || '',
@@ -257,7 +282,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       state.loadedMonths.add(currentMonth);
 
       const recordsRef = collection(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones');
-      const colRef = state.currentUser?.role === 'Asesor'
+      const colRef = isAdvisorRole()
         ? query(
             recordsRef,
             where('asesorUid', '==', state.currentUser.uid),
@@ -351,7 +376,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         const fetchedAll = [];
         for (let i = 0; i < missing.length; i += 10) {
           const chunk = missing.slice(i, i + 10);
-          const q = state.currentUser?.role === 'Asesor'
+          const q = isAdvisorRole()
             ? query(recordsRef, where('asesorUid', '==', state.currentUser.uid), where('mesAnio', 'in', chunk))
             : query(recordsRef, where('mesAnio', 'in', chunk));
           const snap = await getDocs(q);
@@ -412,6 +437,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         registro: studentCode,
         asesor: record.asesor,
         fecha: record.fecha,
+        tramites: record.tramites || {},
+        observaciones: record.observaciones || 'INFORMACION',
         createdAtServer: record.createdAtServer || toAttendanceTimestamp(record),
         recordId: record.id
       };
@@ -468,25 +495,32 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
       const authEmail = String(authUser.email || emailFallback).trim().toLowerCase();
       const profileEmail = String(profile.email || (isInitialAdmin ? authEmail : '')).trim().toLowerCase();
-      const isAdmin = isInitialAdmin
-        || (profile.rol === 'Administrador' && profileEmail === authEmail);
-      const isAdvisor = profile.rol === 'Asesor' && profileEmail === authEmail;
-      const role = isAdmin ? 'Administrador' : isAdvisor ? 'Asesor' : '';
-      const name = String(profile.nombre || (isInitialAdmin ? 'Oscar Vargas' : '')).trim();
-      const phone = String(profile.telefono || '').trim();
+     const isAdmin = isInitialAdmin
+      || (profile.rol === 'Administrador' && profileEmail === authEmail);
+    const isSpecialAdvisor = profile.rol === 'Asesor Especial' && profileEmail === authEmail;
+    const isAdvisor = profile.rol === 'Asesor' && profileEmail === authEmail;
+    const role = isAdmin
+      ? 'Administrador'
+      : isSpecialAdvisor
+        ? 'Asesor Especial'
+        : isAdvisor
+          ? 'Asesor'
+          : '';
+    const name = String(profile.nombre || (isInitialAdmin ? 'Oscar Vargas' : '')).trim();
+    const phone = String(profile.telefono || '').trim();
 
-      if (!role || !name || profileEmail !== authEmail || (!isAdmin && !phone)) {
-        if (!isInitialAdmin) {
-          await signOut(state.firebase.auth);
-        }
-        showToast(
-          isInitialAdmin
-            ? 'El perfil del administrador no coincide con su cuenta de Firebase.'
-            : 'No existe un perfil válido. Registre nombre, teléfono, correo y rol "Asesor" o "Administrador" en Firestore.',
-          'error'
-        );
-        return;
+    if (!role || !name || profileEmail !== authEmail || (!isAdmin && !phone)) {
+      if (!isInitialAdmin) {
+        await signOut(state.firebase.auth);
       }
+      showToast(
+        isInitialAdmin
+          ? 'El perfil del administrador no coincide con su cuenta de Firebase.'
+          : 'No existe un perfil válido. Registre nombre, teléfono, correo y rol "Asesor", "Asesor Especial" o "Administrador" en Firestore.',
+        'error'
+      );
+      return;
+    }
 
       state.firebase.connected = false;
       state.records = [];
@@ -568,8 +602,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('quick-stat-today-date').textContent = formatDateDisplay(today);
       startDateRolloverWatcher();
 
-      // Si es supervisor, abrir directamente en Reporte Mensual; si es asesor, en Registro Rápido
-      refreshAllViews();
+      renderProcedureButtons();
+
+    // Si es supervisor, abrir directamente en Reporte Mensual; si es asesor, en Registro Rápido
+    refreshAllViews();
       if (user.role === 'Supervisor' || user.role === 'Administrador') {
         switchTab('reportes');
       } else {
@@ -691,8 +727,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     // 6. REGISTRO RÁPIDO Y DETECCIÓN AUTOMÁTICA DE RE-CONSULTAS (NARANJA)
     // =========================================================================
     function renderProcedureButtons() {
-      const container = document.getElementById('procedures-grid');
-      container.innerHTML = PROCEDURES.map((proc) => {
+    const container = document.getElementById('procedures-grid');
+    const visibleProcedures = getAllowedProceduresForCurrentUser();
+    container.innerHTML = visibleProcedures.map((proc) => {
         const active = state.selectedProcedures.has(proc.key);
         return `
           <button
@@ -722,14 +759,42 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('selected-procs-count').textContent = `${state.selectedProcedures.size} seleccionado${state.selectedProcedures.size === 1 ? '' : 's'}`;
     }
 
-    window.toggleProcedure = function (key) {
-      if (state.selectedProcedures.has(key)) {
-        state.selectedProcedures.delete(key);
-      } else {
-        state.selectedProcedures.add(key);
+    function updateCongelamientoSubpanelUI() {
+      const subpanel = document.getElementById('congelamiento-subpanel');
+      if (!subpanel) return;
+      const isSelected = state.selectedProcedures.has('congelamiento');
+      subpanel.classList.toggle('hidden', !isSelected);
+      if (!isSelected) {
+        state.congelamientoFee = '';
+        const check = document.getElementById('cong-carta-check');
+        if (check) check.checked = false;
       }
-      renderProcedureButtons();
+      ['GRATIS', '300', '500'].forEach((fee) => {
+        const btn = document.getElementById(`cong-fee-btn-${fee}`);
+        if (!btn) return;
+        const active = state.congelamientoFee === fee;
+        btn.className = active
+          ? 'py-2.5 px-3 rounded-xl border-2 border-[#C8102E] bg-[#C8102E] text-white text-xs font-extrabold shadow-sm transition text-center'
+          : 'py-2.5 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-700 hover:border-[#C8102E] text-xs font-extrabold transition text-center';
+      });
+    }
+
+    window.selectCongelamientoFee = function (fee) {
+      state.congelamientoFee = fee;
+      updateCongelamientoSubpanelUI();
     };
+
+    window.toggleProcedure = function (key) {
+    const proc = PROCEDURES.find((p) => p.key === key);
+    if (!proc || !canUserAccessProcedure(proc)) return;
+    if (state.selectedProcedures.has(key)) {
+      state.selectedProcedures.delete(key);
+    } else {
+      state.selectedProcedures.add(key);
+    }
+    renderProcedureButtons();
+    updateCongelamientoSubpanelUI();
+  };
 
     function renderQuickObsTags() {
       const container = document.getElementById('quick-obs-tags');
@@ -802,8 +867,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
             ? { found: false }
             : {
                 found: true,
+                recordId: snapshot.data().recordId || '',
                 fecha: snapshot.data().fecha,
                 asesor: snapshot.data().asesor,
+                tramites: snapshot.data().tramites || {},
+                observaciones: snapshot.data().observaciones || '',
                 createdAtMillis: snapshot.data().createdAtServer?.toMillis?.() ?? null
               };
           state.studentSummaryCache.set(studentCode, { data, cachedAt: Date.now() });
@@ -818,29 +886,26 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       return promise;
     }
 
-    async function showAdvisorLatestAttendance(studentCode, matches, requestId) {
-      const alertBox = document.getElementById('repeat-alert-box');
-      const latestAttendance = document.getElementById('repeat-alert-history');
-      const hasLocalMatches = matches.length > 0;
-      if (!hasLocalMatches) {
-        alertBox.classList.remove('hidden');
-        document.getElementById('repeat-alert-badge').textContent = 'Última atención';
-        document.getElementById('repeat-alert-summary').textContent =
-          'Consultando la última atención registrada globalmente.';
-        latestAttendance.replaceChildren();
-      }
+    function buildDetailedAttendanceCard({ headingText, fecha, createdAtMillis, asesor, tramites, observaciones }) {
+      const attendanceTime = formatTimeDisplay(createdAtMillis);
+      const attendanceProcedures = PROCEDURES
+        .filter((procedure) => tramites?.[procedure.key])
+        .map((procedure) => procedure.label);
 
       const card = document.createElement('div');
       card.className = 'bg-white/90 border border-orange-200 rounded-xl p-3 shadow-sm space-y-3';
 
       const header = document.createElement('div');
       header.className = 'flex flex-wrap items-center justify-between gap-2';
+
       const heading = document.createElement('span');
       heading.className = 'inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-orange-800';
-      heading.textContent = 'Última atención global';
+      heading.textContent = headingText;
+
       const dateTime = document.createElement('span');
       dateTime.className = 'text-[11px] font-semibold text-slate-500';
-      dateTime.textContent = 'Consultando...';
+      dateTime.textContent = `${formatDateDisplay(fecha)} · ${attendanceTime}`;
+
       header.append(heading, dateTime);
       card.appendChild(header);
 
@@ -850,52 +915,110 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       advisorLabel.textContent = 'Asesor';
       const advisorName = document.createElement('p');
       advisorName.className = 'text-sm font-extrabold text-[#C8102E]';
-      advisorName.textContent = 'Consultando...';
+      advisorName.textContent = asesor || 'No disponible';
       advisor.append(advisorLabel, advisorName);
       card.appendChild(advisor);
-      latestAttendance.appendChild(card);
+
+      const proceduresSection = document.createElement('div');
+      const proceduresLabel = document.createElement('p');
+      proceduresLabel.className = 'text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5';
+      proceduresLabel.textContent = 'Atención recibida';
+      const procedureTags = document.createElement('div');
+      procedureTags.className = 'flex flex-wrap gap-1.5';
+      const procedureNames = attendanceProcedures.length > 0 ? attendanceProcedures : ['Sin detalle registrado'];
+      procedureNames.forEach((name) => {
+        const tag = document.createElement('span');
+        tag.className = 'px-2 py-1 rounded-lg bg-[#FDF2F4] border border-red-100 text-[10px] font-bold text-[#C8102E]';
+        tag.textContent = name;
+        procedureTags.appendChild(tag);
+      });
+      proceduresSection.append(proceduresLabel, procedureTags);
+      card.appendChild(proceduresSection);
+
+      const observation = document.createElement('div');
+      observation.className = 'rounded-lg bg-orange-50/80 px-2.5 py-2';
+      const observationLabel = document.createElement('p');
+      observationLabel.className = 'text-[10px] font-bold uppercase tracking-wider text-orange-700';
+      observationLabel.textContent = 'Observación';
+      const observationText = document.createElement('p');
+      observationText.className = 'text-xs text-slate-600 mt-0.5 break-words';
+      observationText.textContent = observaciones || '-';
+      observation.append(observationLabel, observationText);
+      card.appendChild(observation);
+
+      return card;
+    }
+
+    function setStudentLookupSpinner(visible) {
+      const spinner = document.getElementById('student-lookup-spinner');
+      if (spinner) spinner.classList.toggle('hidden', !visible);
+    }
+
+    async function showAdvisorLatestAttendance(studentCode, matches, localLatestId, requestId) {
+      const alertBox = document.getElementById('repeat-alert-box');
+      const latestAttendance = document.getElementById('repeat-alert-history');
+      const hasLocalMatches = matches.length > 0;
+
+      const cached = state.studentSummaryCache.get(studentCode);
+      const isCachedFresh = cached && (Date.now() - cached.cachedAt) < 60000;
+      if (!isCachedFresh) {
+        setStudentLookupSpinner(true);
+      }
 
       try {
         const latest = await getStudentAttendanceSummary(studentCode);
         if (
           requestId !== state.latestAttendanceRequestId
           || document.getElementById('entry-registro').value.trim() !== studentCode
-          || state.currentUser?.role !== 'Asesor'
+          || !isAdvisorRole()
         ) return;
 
         if (!latest.found) {
-          card.remove();
           if (!hasLocalMatches) {
             alertBox.classList.add('hidden');
-          } else {
-            showToast(
-              'No se encontró una atención previa para este estudiante.',
-              'info'
-            );
           }
           return;
         }
 
-        dateTime.textContent =
-          `${formatDateDisplay(latest.fecha)} · ${formatTimeDisplay(latest.createdAtMillis)}`;
-        advisorName.textContent = latest.asesor;
+        // Si el último registro global es el mismo que ya se mostró localmente, no duplicar tarjeta
+        if (hasLocalMatches && latest.recordId && latest.recordId === localLatestId) {
+          return;
+        }
+
+        const selectedDate = document.getElementById('entry-fecha').value || getTodayISO();
+        const isToday = latest.fecha === selectedDate;
+        const detailedCard = buildDetailedAttendanceCard({
+          headingText: 'Última atención en SAE',
+          fecha: latest.fecha,
+          createdAtMillis: latest.createdAtMillis,
+          asesor: latest.asesor,
+          tramites: latest.tramites,
+          observaciones: latest.observaciones
+        });
+
+        alertBox.classList.remove('hidden');
         if (!hasLocalMatches) {
+          document.getElementById('repeat-alert-badge').textContent = isToday ? '¡Atendido HOY!' : 'Atención previa';
           document.getElementById('repeat-alert-summary').textContent =
-            `Última atención registrada para el estudiante ${studentCode}.`;
+            `El estudiante ${studentCode} ya fue atendido previamente en SAE. Al guardarse se marcará en naranja como re-consulta.`;
+          latestAttendance.replaceChildren(detailedCard);
+        } else {
+          latestAttendance.replaceChildren(detailedCard);
         }
       } catch (error) {
         console.error('Error al consultar el resumen de última atención:', error);
         if (requestId !== state.latestAttendanceRequestId) return;
         if (!hasLocalMatches) {
-          document.getElementById('repeat-alert-summary').textContent =
-            'No se pudo consultar la última atención. Inténtelo nuevamente.';
+          alertBox.classList.add('hidden');
         }
-        dateTime.textContent = 'No disponible';
-        advisorName.textContent = 'No disponible';
         showToast(
           `No se pudo consultar la última atención (${error?.code || 'error-desconocido'}).`,
           'error'
         );
+      } finally {
+        if (requestId === state.latestAttendanceRequestId) {
+          setStudentLookupSpinner(false);
+        }
       }
     }
 
@@ -906,6 +1029,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const clean = normalizeStudentCodeInput(rawVal);
       input.value = clean;
       document.getElementById('registro-char-counter').textContent = `${clean.length}/6`;
+
+      clearTimeout(state.studentLookupTimer);
+      setStudentLookupSpinner(false);
 
       const alertBox = document.getElementById('repeat-alert-box');
       if (!isValidStudentCode(clean)) {
@@ -919,12 +1045,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         (r) => r.registro === clean && r.mesAnio === targetMonth
       );
 
-     clearTimeout(state.studentLookupTimer);
+      clearTimeout(state.studentLookupTimer);
 
       if (matches.length === 0) {
-        if (state.currentUser?.role === 'Asesor') {
+     if (isAdvisorRole()) {
           state.studentLookupTimer = setTimeout(() => {
-            showAdvisorLatestAttendance(clean, matches, requestId);
+            showAdvisorLatestAttendance(clean, matches, '', requestId);
           }, 300);
           return;
         }
@@ -948,71 +1074,21 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('repeat-alert-summary').textContent =
         `El estudiante ${clean} ya registra ${matches.length} atención(es) en ${formatMonthName(targetMonth)}. Al guardarse se marcará en naranja como re-consulta.`;
 
-      const attendanceTime = formatTimeDisplay(latestMatch.createdAt);
-      const attendanceProcedures = PROCEDURES
-        .filter((procedure) => latestMatch.tramites?.[procedure.key])
-        .map((procedure) => procedure.label);
       const latestAttendance = document.getElementById('repeat-alert-history');
-      latestAttendance.replaceChildren();
+      latestAttendance.replaceChildren(
+        buildDetailedAttendanceCard({
+          headingText: 'Última atención',
+          fecha: latestMatch.fecha,
+          createdAtMillis: latestMatch.createdAt,
+          asesor: latestMatch.asesor,
+          tramites: latestMatch.tramites,
+          observaciones: latestMatch.observaciones
+        })
+      );
 
-      const card = document.createElement('div');
-      card.className = 'bg-white/90 border border-orange-200 rounded-xl p-3 shadow-sm space-y-3';
-
-      const header = document.createElement('div');
-      header.className = 'flex flex-wrap items-center justify-between gap-2';
-
-      const heading = document.createElement('span');
-      heading.className = 'inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-orange-800';
-      heading.textContent = 'Última atención';
-
-      const dateTime = document.createElement('span');
-      dateTime.className = 'text-[11px] font-semibold text-slate-500';
-      dateTime.textContent = `${formatDateDisplay(latestMatch.fecha)} · ${attendanceTime}`;
-
-      header.append(heading, dateTime);
-      card.appendChild(header);
-
-      const advisor = document.createElement('div');
-      const advisorLabel = document.createElement('p');
-      advisorLabel.className = 'text-[10px] font-bold uppercase tracking-wider text-slate-400';
-      advisorLabel.textContent = 'Asesor';
-      const advisorName = document.createElement('p');
-      advisorName.className = 'text-sm font-extrabold text-[#C8102E]';
-      advisorName.textContent = latestMatch.asesor;
-      advisor.append(advisorLabel, advisorName);
-      card.appendChild(advisor);
-
-      const proceduresSection = document.createElement('div');
-      const proceduresLabel = document.createElement('p');
-      proceduresLabel.className = 'text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5';
-      proceduresLabel.textContent = 'Atención recibida';
-      const procedureTags = document.createElement('div');
-      procedureTags.className = 'flex flex-wrap gap-1.5';
-      const procedureNames = attendanceProcedures.length > 0 ? attendanceProcedures : ['Sin trámite'];
-      procedureNames.forEach((name) => {
-        const tag = document.createElement('span');
-        tag.className = 'px-2 py-1 rounded-lg bg-[#FDF2F4] border border-red-100 text-[10px] font-bold text-[#C8102E]';
-        tag.textContent = name;
-        procedureTags.appendChild(tag);
-      });
-      proceduresSection.append(proceduresLabel, procedureTags);
-      card.appendChild(proceduresSection);
-
-      const observation = document.createElement('div');
-      observation.className = 'rounded-lg bg-orange-50/80 px-2.5 py-2';
-      const observationLabel = document.createElement('p');
-      observationLabel.className = 'text-[10px] font-bold uppercase tracking-wider text-orange-700';
-      observationLabel.textContent = 'Observación';
-      const observationText = document.createElement('p');
-      observationText.className = 'text-xs text-slate-600 mt-0.5 break-words';
-      observationText.textContent = latestMatch.observaciones || '-';
-      observation.append(observationLabel, observationText);
-      card.appendChild(observation);
-
-    latestAttendance.appendChild(card);
-      if (state.currentUser?.role === 'Asesor') {
+     if (isAdvisorRole()) {
         state.studentLookupTimer = setTimeout(() => {
-          showAdvisorLatestAttendance(clean, matches, requestId);
+          showAdvisorLatestAttendance(clean, matches, latestMatch.id, requestId);
         }, 300);
       }
     };
@@ -1037,15 +1113,29 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         return;
       }
 
-      if (state.selectedProcedures.size === 0) {
+    if (state.selectedProcedures.size === 0) {
         showToast('Marque al menos un trámite solicitado con (X).', 'error');
         return;
       }
 
+      const hasCongelamiento = state.selectedProcedures.has('congelamiento');
+      if (hasCongelamiento && !['GRATIS', '300', '500'].includes(state.congelamientoFee)) {
+        showToast('Seleccione si el congelamiento es Retiro Gratis, 300 Bs o 500 Bs.', 'error');
+        return;
+      }
+
+      const congelamientoDetalle = hasCongelamiento
+        ? {
+            cartaRecepcionada: Boolean(document.getElementById('cong-carta-check')?.checked),
+            tipoArancel: state.congelamientoFee,
+            montoBs: state.congelamientoFee === '300' ? 300 : state.congelamientoFee === '500' ? 500 : 0
+          }
+        : null;
+
       const tramitesObj = {};
-      PROCEDURES.forEach((p) => {
-        tramitesObj[p.key] = state.selectedProcedures.has(p.key);
-      });
+    PROCEDURES.forEach((p) => {
+      tramitesObj[p.key] = canUserAccessProcedure(p) && state.selectedProcedures.has(p.key);
+    });
 
       const mesAnio = fecha.slice(0, 7);
       const advisorName = state.currentUser?.name || 'Oscar Vargas';
@@ -1076,6 +1166,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         mesAnio,
         registro,
         tramites: tramitesObj,
+        congelamientoDetalle,
         observaciones: observaciones || 'INFORMACION',
         asesor: advisorName,
         asesorUid: state.currentUser.uid,
@@ -1163,7 +1254,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('entry-observaciones').value = '';
       document.getElementById('repeat-alert-box').classList.add('hidden');
       state.selectedProcedures.clear();
+      state.congelamientoFee = '';
+      const congCheck = document.getElementById('cong-carta-check');
+      if (congCheck) congCheck.checked = false;
       renderProcedureButtons();
+      updateCongelamientoSubpanelUI();
       document.getElementById('entry-registro').focus();
     };
 
@@ -1174,8 +1269,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
 
       const key = e.key.toUpperCase();
-      const matchedProc = PROCEDURES.find((p) => p.hotkey === key);
-      if (matchedProc) {
+    const matchedProc = getAllowedProceduresForCurrentUser().find((p) => p.hotkey === key);
+    if (matchedProc) {
         e.preventDefault();
         toggleProcedure(matchedProc.key);
       }
@@ -1377,7 +1472,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('hist-filter-month').value = getTodayISO().slice(0, 7);
       document.getElementById('hist-filter-proc').value = 'ALL';
       document.getElementById('hist-filter-advisor').value =
-        state.currentUser?.role === 'Asesor' ? state.currentUser.name : 'ALL';
+        isAdvisorRole() ? state.currentUser.name : 'ALL';
       document.getElementById('hist-filter-channel').value = 'ALL';
       document.getElementById('hist-filter-repeats').checked = false;
       state.historyPage = 1;
@@ -1409,10 +1504,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const canDeleteRecords = state.currentUser?.role === 'Administrador';
 
       const tbody = document.getElementById('history-table-body');
-      if (pageSlice.length === 0) {
+     if (pageSlice.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="17" class="py-12 text-center text-slate-500">
+            <td colspan="19" class="py-12 text-center text-slate-500">
               No se encontraron registros que coincidan con los filtros seleccionados.
             </td>
           </tr>
@@ -1519,13 +1614,39 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         if (rec.tramites?.[p.key]) state.editSelectedProcedures.add(p.key);
       });
 
+      state.editCongelamientoFee = rec.congelamientoDetalle?.tipoArancel || '';
+      const editCongCheck = document.getElementById('edit-cong-carta-check');
+      if (editCongCheck) editCongCheck.checked = Boolean(rec.congelamientoDetalle?.cartaRecepcionada);
+
       renderEditProceduresGrid();
+      updateEditCongelamientoSubpanelUI();
       document.getElementById('modal-edit').classList.remove('hidden');
     };
 
-    function renderEditProceduresGrid() {
-      const container = document.getElementById('edit-procedures-grid');
-      container.innerHTML = PROCEDURES.map((p) => {
+    function updateEditCongelamientoSubpanelUI() {
+      const subpanel = document.getElementById('edit-congelamiento-subpanel');
+      if (!subpanel) return;
+      const isSelected = state.editSelectedProcedures.has('congelamiento');
+      subpanel.classList.toggle('hidden', !isSelected);
+      ['GRATIS', '300', '500'].forEach((fee) => {
+        const btn = document.getElementById(`edit-cong-fee-btn-${fee}`);
+        if (!btn) return;
+        const active = state.editCongelamientoFee === fee;
+        btn.className = active
+          ? 'py-2 px-2.5 rounded-xl border-2 border-[#C8102E] bg-[#C8102E] text-white text-xs font-extrabold transition'
+          : 'py-2 px-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-[#C8102E] text-xs font-extrabold transition';
+      });
+    }
+
+    window.selectEditCongelamientoFee = function (fee) {
+      state.editCongelamientoFee = fee;
+      updateEditCongelamientoSubpanelUI();
+    };
+
+   function renderEditProceduresGrid() {
+    const container = document.getElementById('edit-procedures-grid');
+    const visibleProcedures = getAllowedProceduresForCurrentUser();
+    container.innerHTML = visibleProcedures.map((p) => {
         const active = state.editSelectedProcedures.has(p.key);
         return `
           <button
@@ -1547,10 +1668,13 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     }
 
     window.toggleEditProcedure = function (key) {
-      if (state.editSelectedProcedures.has(key)) state.editSelectedProcedures.delete(key);
-      else state.editSelectedProcedures.add(key);
-      renderEditProceduresGrid();
-    };
+    const proc = PROCEDURES.find((p) => p.key === key);
+    if (!proc || !canUserAccessProcedure(proc)) return;
+    if (state.editSelectedProcedures.has(key)) state.editSelectedProcedures.delete(key);
+    else state.editSelectedProcedures.add(key);
+    renderEditProceduresGrid();
+    updateEditCongelamientoSubpanelUI();
+  };
 
     window.handleUpdateRecord = async function (e) {
       e.preventDefault();
@@ -1580,15 +1704,29 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         showToast('La fecha de atención es obligatoria.', 'error');
         return;
       }
-      if (state.editSelectedProcedures.size === 0) {
+     if (state.editSelectedProcedures.size === 0) {
         showToast('Seleccione al menos un trámite.', 'error');
         return;
       }
 
-     const tramites = {};
-      PROCEDURES.forEach((p) => {
-        tramites[p.key] = state.editSelectedProcedures.has(p.key);
-      });
+      const hasCongelamiento = state.editSelectedProcedures.has('congelamiento');
+      if (hasCongelamiento && !['GRATIS', '300', '500'].includes(state.editCongelamientoFee)) {
+        showToast('Seleccione si el congelamiento es Retiro Gratis, 300 Bs o 500 Bs.', 'error');
+        return;
+      }
+
+      const congelamientoDetalle = hasCongelamiento
+        ? {
+            cartaRecepcionada: Boolean(document.getElementById('edit-cong-carta-check')?.checked),
+            tipoArancel: state.editCongelamientoFee,
+            montoBs: state.editCongelamientoFee === '300' ? 300 : state.editCongelamientoFee === '500' ? 500 : 0
+          }
+        : null;
+
+      const tramites = {};
+    PROCEDURES.forEach((p) => {
+      tramites[p.key] = canUserAccessProcedure(p) && state.editSelectedProcedures.has(p.key);
+    });
       const mesAnio = fecha.slice(0, 7);
       const canalAtencion = state.editChannelAtencion === 'wati' ? 'wati' : 'plataforma';
 
@@ -1596,8 +1734,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         try {
           const docRef = doc(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones', id);
           const updates = canEditStudentCode
-            ? { registro, fecha, mesAnio, canalAtencion, tramites, observaciones }
-            : { canalAtencion, tramites, observaciones };
+            ? { registro, fecha, mesAnio, canalAtencion, tramites, congelamientoDetalle, observaciones }
+            : { canalAtencion, tramites, congelamientoDetalle, observaciones };
           await updateDoc(docRef, updates);
         } catch (err) {
           console.error('Error actualizando en Firestore:', err);
@@ -1607,11 +1745,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       } else {
         const idx = state.records.findIndex((r) => r.id === id);
         if (idx !== -1) {
-          state.records[idx] = { ...state.records[idx], registro, fecha, mesAnio, canalAtencion, tramites, observaciones };
+          state.records[idx] = { ...state.records[idx], registro, fecha, mesAnio, canalAtencion, tramites, congelamientoDetalle, observaciones };
           refreshAllViews();
         }
       }
-
       closeModal('modal-edit');
       showToast('Registro actualizado correctamente.', 'success');
     };
@@ -1663,6 +1800,72 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         return true;
       });
     }
+
+    const REPORT_SECTION_LABELS = {
+      kpis: 'Tarjetas KPI',
+      tramites: 'Trámites (Gráfico y Tabla)',
+      diario: 'Evolución Diaria',
+      asesores: 'Asesores y Horarios',
+      congelamientos: 'Congelamientos'
+    };
+
+    function applyReportSectionsVisibilityUI() {
+      Object.entries(REPORT_SECTION_LABELS).forEach(([key, label]) => {
+        const visible = state.reportSections[key] !== false;
+        const sectionEl = document.getElementById(`report-section-${key}`);
+        const btnEl = document.getElementById(`sec-toggle-${key}`);
+
+        if (sectionEl) sectionEl.classList.toggle('hidden', !visible);
+        if (btnEl) {
+          btnEl.innerHTML = `<span>${visible ? '✓' : '✕'} ${label}</span>`;
+          btnEl.className = visible
+            ? 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-[#FDF2F4] text-[#C8102E] border-red-200 transition'
+            : 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-slate-50 text-slate-400 border-slate-200 hover:text-slate-600 transition';
+        }
+      });
+
+      // Redimensionar instancias Chart.js al volver a mostrarlas
+      requestAnimationFrame(() => {
+        if (state.reportSections.tramites) state.charts.procedures?.resize();
+        if (state.reportSections.diario) state.charts.daily?.resize();
+        if (state.reportSections.asesores) {
+          state.charts.advisors?.resize();
+          state.charts.hourly?.resize();
+        }
+      });
+    }
+
+    window.toggleReportSection = function (sectionKey) {
+      if (!(sectionKey in state.reportSections)) return;
+      const activeCount = Object.values(state.reportSections).filter(Boolean).length;
+      if (state.reportSections[sectionKey] && activeCount <= 1) {
+        showToast('Debe mantener al menos una sección visible en el reporte.', 'info');
+        return;
+      }
+      state.reportSections[sectionKey] = !state.reportSections[sectionKey];
+      applyReportSectionsVisibilityUI();
+    };
+
+    window.setReportSectionsPreset = function (preset) {
+      if (preset === 'CONG_ONLY') {
+        state.reportSections = {
+          kpis: false,
+          tramites: false,
+          diario: false,
+          asesores: false,
+          congelamientos: true
+        };
+      } else {
+        state.reportSections = {
+          kpis: true,
+          tramites: true,
+          diario: true,
+          asesores: true,
+          congelamientos: true
+        };
+      }
+      applyReportSectionsVisibilityUI();
+    };
 
     window.setReportChannelFilter = function (channel) {
       state.reportChannelFilter = ['wati', 'plataforma'].includes(channel) ? channel : 'ALL';
@@ -1751,6 +1954,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     function renderMonthlyReport() {
       updateReportAdvisorsHeading();
       updateReportChannelUI();
+      applyReportSectionsVisibilityUI();
       const selectedMonth = document.getElementById('report-month-select').value || getTodayISO().slice(0, 7);
       const selectedAdvisor = document.getElementById('report-advisor-select').value || 'ALL';
       const selectedChannel = state.reportChannelFilter || 'ALL';
@@ -1924,11 +2128,141 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       if (printChannelEl) printChannelEl.textContent = `Canal: ${channelMetaLabel}`;
       document.getElementById('print-meta-date').textContent = `Generado: ${formatDateDisplay(getTodayISO())}`;
 
-      renderProceduresChart(procCounts);
+     renderProceduresChart(procCounts);
       renderDailyTrendChart(selectedMonth, dailyMap, dateRange.hasRange);
       renderAdvisorsChart(periodAllRecords);
       renderHourlyChart(filteredRecords);
+      renderCongelamientosReport(filteredRecords);
     }
+
+    function renderCongelamientosReport(recordsList) {
+      const congRecords = recordsList.filter((r) => r.tramites?.congelamiento);
+      const totalCong = congRecords.length;
+      const totalAll = recordsList.length;
+
+      let cartasSi = 0;
+      const buckets = {
+        GRATIS: { label: 'Retiro Gratis', count: 0, cartas: 0, sinCarta: 0 },
+        '300': { label: 'Arancel 300 Bs', count: 0, cartas: 0, sinCarta: 0 },
+        '500': { label: 'Arancel 500 Bs', count: 0, cartas: 0, sinCarta: 0 },
+        SIN_DETALLE: { label: 'Sin especificar (Histórico)', count: 0, cartas: 0, sinCarta: 0 }
+      };
+
+      congRecords.forEach((r) => {
+        const det = r.congelamientoDetalle;
+        const hasCarta = Boolean(det?.cartaRecepcionada);
+        if (hasCarta) cartasSi++;
+
+        const key = ['GRATIS', '300', '500'].includes(det?.tipoArancel) ? det.tipoArancel : 'SIN_DETALLE';
+        buckets[key].count++;
+        if (hasCarta) buckets[key].cartas++;
+        else buckets[key].sinCarta++;
+      });
+
+      const shareAllPct = totalAll > 0 ? ((totalCong / totalAll) * 100).toFixed(1) : '0.0';
+      const cartasPct = totalCong > 0 ? ((cartasSi / totalCong) * 100).toFixed(1) : '0.0';
+      const gratisPct = totalCong > 0 ? ((buckets.GRATIS.count / totalCong) * 100).toFixed(1) : '0.0';
+      const pagadosCount = buckets['300'].count + buckets['500'].count;
+
+      const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      setTxt('cong-kpi-total', totalCong.toLocaleString('es-BO'));
+      setTxt('cong-kpi-share', `${shareAllPct}% del total de atenciones`);
+      setTxt('cong-kpi-cartas', `${cartasSi} / ${totalCong}`);
+      setTxt('cong-kpi-cartas-pct', `${cartasPct}% con carta entregada`);
+      setTxt('cong-kpi-gratis', buckets.GRATIS.count.toLocaleString('es-BO'));
+      setTxt('cong-kpi-gratis-pct', `${gratisPct}% de congelamientos`);
+      setTxt('cong-kpi-pagados', pagadosCount.toLocaleString('es-BO'));
+      setTxt('cong-kpi-pagados-desglose', `${buckets['300'].count} de 300 Bs · ${buckets['500'].count} de 500 Bs`);
+
+      const tbody = document.getElementById('cong-report-table-body');
+      if (!tbody) return;
+
+      if (totalCong === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-6 text-center text-slate-400">No se registraron congelamientos en el periodo seleccionado.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      const order = ['GRATIS', '300', '500', 'SIN_DETALLE'].filter((k) => k !== 'SIN_DETALLE' || buckets[k].count > 0);
+      tbody.innerHTML = order.map((k) => {
+        const b = buckets[k];
+        const pct = totalCong > 0 ? ((b.count / totalCong) * 100).toFixed(1) : '0.0';
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-3 font-bold text-slate-800">${b.label}</td>
+            <td class="py-2.5 px-3 text-right font-extrabold text-slate-900">${b.count}</td>
+            <td class="py-2.5 px-3 text-right font-semibold text-slate-600">${pct}%</td>
+            <td class="py-2.5 px-3 text-right font-bold text-emerald-700">${b.cartas}</td>
+            <td class="py-2.5 px-3 text-right font-semibold text-amber-700">${b.sinCarta}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    window.exportCongelamientosExcel = function () {
+      const congRows = getFilteredReportRecords().filter((r) => r.tramites?.congelamiento);
+      if (congRows.length === 0) {
+        showToast('No hay congelamientos para exportar en el filtro actual.', 'error');
+        return;
+      }
+
+      const thStyle = 'background-color:#C8102E;color:#FFFFFF;font-family:Calibri,sans-serif;font-size:11pt;font-weight:bold;text-align:center;border:1px solid #9E0B22;padding:5px 8px;';
+      const tdStyle = 'font-family:Calibri,sans-serif;font-size:11pt;border:1px solid #D9D9D9;padding:4px 8px;';
+
+      const bodyRows = congRows.map((r) => {
+        const det = r.congelamientoDetalle;
+        const cartaTxt = det?.cartaRecepcionada ? 'SÍ' : 'NO';
+        const modalTxt = det?.tipoArancel === 'GRATIS'
+          ? 'RETIRO GRATIS'
+          : det?.tipoArancel === '300'
+            ? '300 BS'
+            : det?.tipoArancel === '500'
+              ? '500 BS'
+              : 'SIN ESPECIFICAR';
+
+        return `
+          <tr>
+            <td style="${tdStyle}text-align:center;">${escapeHtml(formatDateDisplay(r.fecha))}</td>
+            <td style="${tdStyle}text-align:center;font-weight:bold;">${escapeHtml(r.registro)}</td>
+            <td style="${tdStyle}text-align:center;">${r.canalAtencion === 'wati' ? 'WATI' : 'PLATAFORMA'}</td>
+            <td style="${tdStyle}text-align:center;font-weight:bold;color:${det?.cartaRecepcionada ? '#047857' : '#B45309'};">${cartaTxt}</td>
+            <td style="${tdStyle}text-align:center;font-weight:bold;">${modalTxt}</td>
+            <td style="${tdStyle}">${escapeHtml(r.observaciones || '')}</td>
+            <td style="${tdStyle}text-align:center;">${escapeHtml(r.asesor || '')}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const html = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+        <head><meta charset="UTF-8"></head>
+        <body>
+          <table style="border-collapse:collapse;">
+            <tr>
+              <td colspan="7" style="font-family:Calibri,sans-serif;font-size:12pt;font-weight:bold;color:#C8102E;padding:6px 2px;">UTEPSA SAE — CONTROL DE CONGELAMIENTOS Y CARTAS RECEPCIONADAS</td>
+            </tr>
+            <tr>
+              <th style="${thStyle}">FECHA</th>
+              <th style="${thStyle}">REGISTRO</th>
+              <th style="${thStyle}">CANAL</th>
+              <th style="${thStyle}">CARTA RECEPCIONADA</th>
+              <th style="${thStyle}">MODALIDAD</th>
+              <th style="${thStyle}">OBSERVACIONES</th>
+              <th style="${thStyle}">ASESOR</th>
+            </tr>
+            ${bodyRows}
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      triggerDownload(blob, `Reporte_Congelamientos_UTEPSA_SAE_${getTodayISO()}.xls`);
+      showToast(`Reporte de Congelamientos exportado (${congRows.length} registros).`, 'success');
+    };
 
     window.renderMonthlyReport = async function () {
       renderMonthlyReport();
@@ -1952,13 +2286,13 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('report-date-from').value = '';
       document.getElementById('report-date-to').value = '';
       document.getElementById('report-advisor-select').value =
-        state.currentUser?.role === 'Asesor' ? state.currentUser.name : 'ALL';
+        isAdvisorRole() ? state.currentUser.name : 'ALL';
       state.reportChannelFilter = 'ALL';
       renderMonthlyReport();
     };
 
     function updateReportAdvisorsHeading() {
-      const isAdvisor = state.currentUser?.role === 'Asesor';
+      const isAdvisor = isAdvisorRole();
       document.getElementById('report-advisors-title').textContent = isAdvisor
         ? 'Atención global del asesor'
         : 'Comparativa de Atenciones por Asesor';
@@ -2093,6 +2427,27 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       });
 
       const sortedAdvisors = Array.from(advMap.entries()).sort((a, b) => b[1] - a[1]);
+      const totalPeriod = periodRecords.length;
+
+      const summaryContainer = document.getElementById('advisors-percentage-summary');
+      if (summaryContainer) {
+        if (sortedAdvisors.length === 0) {
+          summaryContainer.innerHTML = '';
+        } else {
+          summaryContainer.innerHTML = sortedAdvisors.map(([name, count], idx) => {
+            const pct = totalPeriod > 0 ? ((count / totalPeriod) * 100).toFixed(1) : '0.0';
+            const badgeStyle = idx === 0
+              ? (isWati ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-[#FDF2F4] text-[#C8102E] border-red-200')
+              : 'bg-slate-50 text-slate-700 border-slate-200';
+            return `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${badgeStyle}">
+                <span>${escapeHtml(name)}:</span>
+                <span>${count.toLocaleString('es-BO')} (${pct}%)</span>
+              </span>
+            `;
+          }).join('');
+        }
+      }
 
       state.charts.advisors = new Chart(ctx, {
         type: 'bar',
@@ -2116,7 +2471,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
             tooltip: {
               backgroundColor: '#1E293B',
               padding: 10,
-              cornerRadius: 10
+              cornerRadius: 10,
+              callbacks: {
+                label: (context) => {
+                  const val = context.parsed.y || 0;
+                  const pct = totalPeriod > 0 ? ((val / totalPeriod) * 100).toFixed(1) : '0.0';
+                  return ` Atenciones: ${val.toLocaleString('es-BO')} (${pct}%)`;
+                }
+              }
             }
           },
           scales: {
@@ -2132,7 +2494,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           }
         }
       });
-    }
+    } 
 
     function renderHourlyChart(recordsList) {
       const canvas = document.getElementById('chart-hourly');
@@ -2247,7 +2609,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         ? selectedFilterAdvisor
         : (state.currentUser?.name || 'SAE UTEPSA');
 
-      const colWidthsPx = [102, 86, 114, 76, 106, 101, 92, 63, 109, 80, 58, 94, 94, 132, 333, 81];
+      const colWidthsPx = [102, 86, 114, 76, 106, 101, 92, 63, 109, 80, 58, 94, 94, 94, 94, 132, 333, 81];
       const totalTableWidth = colWidthsPx.reduce((acc, w) => acc + w, 0);
       const colGroupHtml = `<colgroup>${colWidthsPx.map((w) => `<col width="${w}" style="width:${w}px;mso-width-source:userset;">`).join('')}</colgroup>`;
 
@@ -2368,15 +2730,15 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
             <tr style="height:34px;">
               <td colspan="4" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:left;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">UTEPSA - UNIVERSIDAD TECNOLÓGICA PRIVADA DE SANTA CRUZ</td>
               <td colspan="7" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:center;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">"Educar para emprender y servir"</td>
-              <td colspan="5" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:right;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">${escapeHtml(advisorTitle.toUpperCase())}</td>
+              <td colspan="7" style="font-family:Calibri,sans-serif;font-size:10pt;font-weight:bold;color:#C8102E;text-align:right;vertical-align:middle;white-space:normal;border:none;border-bottom:2px solid #9E0B22;padding:4px 2px;">${escapeHtml(advisorTitle.toUpperCase())}</td>
             </tr>
             <tr style="height:30px;">
               <th style="${thBaseStyle}width:${colWidthsPx[0]}px;">FECHA</th>
               <th style="${thBaseStyle}width:${colWidthsPx[1]}px;">REGISTRO</th>
               <th style="${thBaseStyle}width:${colWidthsPx[2]}px;">CANAL</th>
               ${PROCEDURES.map((p, idx) => `<th style="${thBaseStyle}width:${colWidthsPx[idx + 3]}px;">${p.label}</th>`).join('')}
-              <th style="${thBaseStyle}width:${colWidthsPx[14]}px;">OBSERVACIONES</th>
-              <th style="${thBaseStyle}width:${colWidthsPx[15]}px;">ASESOR</th>
+              <th style="${thBaseStyle}width:${colWidthsPx[16]}px;">OBSERVACIONES</th>
+              <th style="${thBaseStyle}width:${colWidthsPx[17]}px;">ASESOR</th>
             </tr>
             ${tableRowsHtml}
           </table>
@@ -2494,7 +2856,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
       const histAdv = document.getElementById('hist-filter-advisor');
       const prevHistAdv = histAdv.value;
-      const currentAdvisor = state.currentUser?.role === 'Asesor' ? state.currentUser.name : '';
+      const currentAdvisor = isAdvisorRole() ? state.currentUser.name : '';
       histAdv.disabled = Boolean(currentAdvisor);
       histAdv.replaceChildren();
       if (currentAdvisor) {

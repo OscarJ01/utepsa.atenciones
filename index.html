@@ -330,7 +330,7 @@
                   <p class="text-[11px] text-red-100">Flujo rápido: Ingrese código → Marque trámites → Enter para guardar</p>
                 </div>
               </div>
-              <span class="text-xs font-semibold bg-black/20 px-3 py-1 rounded-full">Atajos: Teclas 1-9, 0, Q</span>
+             <span class="text-xs font-semibold bg-black/20 px-3 py-1 rounded-full">Atajos: Teclas 1-9, 0, Q, W, E</span>
             </div>
 
             <form id="fast-entry-form" onsubmit="handleSaveRecord(event)" class="p-6 space-y-6">
@@ -338,9 +338,15 @@
               <!-- Paso 1: Registro del Estudiante y Fecha -->
               <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
                 <div class="sm:col-span-7">
-                  <label for="entry-registro" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    1. N° Registro de Estudiante <span class="text-[#C8102E]">*</span>
-                  </label>
+                  <div class="flex items-center justify-between gap-2 mb-1.5">
+                    <label for="entry-registro" class="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      1. N° Registro de Estudiante <span class="text-[#C8102E]">*</span>
+                    </label>
+                    <span id="student-lookup-spinner" class="hidden inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                      <span class="w-3 h-3 rounded-full border-2 border-slate-300 border-t-[#C8102E] animate-spin"></span>
+                      <span>Verificando...</span>
+                    </span>
+                  </div>
                   <div class="relative">
                     <input
                       type="text"
@@ -398,7 +404,38 @@
                 </div>
 
                 <div id="procedures-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  <!-- Generado dinámicamente con los 11 trámites exactos de UTEPSA -->
+                  <!-- Generado dinámicamente con los trámites oficiales de UTEPSA -->
+                </div>
+
+                <!-- Subpanel condicional cuando se selecciona CONGELAMIENTO -->
+                <div id="congelamiento-subpanel" class="hidden mt-3 rounded-2xl bg-red-50/70 border-2 border-[#C8102E]/30 p-4 space-y-3 animate-fade-in">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-xs font-extrabold text-[#C8102E] uppercase tracking-wider">Detalle Obligatorio de Congelamiento</span>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-[#C8102E] border border-red-200">Control Documental y Arancel</span>
+                  </div>
+
+                  <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-red-100">
+                    <label class="inline-flex items-center gap-2.5 cursor-pointer select-none">
+                      <input type="checkbox" id="cong-carta-check" class="w-4 h-4 rounded text-[#C8102E] focus:ring-[#C8102E]" />
+                      <span class="text-xs font-extrabold text-slate-800">Carta recepcionada</span>
+                    </label>
+                    <span class="text-[11px] text-slate-500">Marcar si el estudiante entregó su carta</span>
+                  </div>
+
+                  <div>
+                    <p class="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">Arancel / Modalidad de Retiro <span class="text-[#C8102E]">*</span></p>
+                    <div class="grid grid-cols-3 gap-2">
+                      <button type="button" id="cong-fee-btn-GRATIS" onclick="selectCongelamientoFee('GRATIS')" class="py-2.5 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-700 hover:border-[#C8102E] text-xs font-extrabold transition text-center">
+                        Retiro Gratis
+                      </button>
+                      <button type="button" id="cong-fee-btn-300" onclick="selectCongelamientoFee('300')" class="py-2.5 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-700 hover:border-[#C8102E] text-xs font-extrabold transition text-center">
+                        300 Bs
+                      </button>
+                      <button type="button" id="cong-fee-btn-500" onclick="selectCongelamientoFee('500')" class="py-2.5 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-700 hover:border-[#C8102E] text-xs font-extrabold transition text-center">
+                        500 Bs
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -558,6 +595,8 @@
                   <th class="py-3 px-2 text-center border-r border-red-800/50" title="INFORMACIÓN">INFORM.</th>
                   <th class="py-3 px-2 text-center border-r border-red-800/50" title="REINGRESANTE">REINGR.</th>
                   <th class="py-3 px-2 text-center border-r border-red-800/50" title="EX. DE GRADO / TESIS">EX. GRADO</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="RETIRO DE MATERIA">RET. MAT.</th>
+                  <th class="py-3 px-2 text-center border-r border-red-800/50" title="CAMBIO DE MATERIA">CAMB. MAT.</th>
                   <th class="py-3 px-3 border-r border-red-800/50">OBSERVACIONES</th>
                   <th class="py-3 px-3 border-r border-red-800/50">CANAL</th>
                   <th class="py-3 px-3 border-r border-red-800/50">ASESOR</th>
@@ -663,6 +702,38 @@
           <span id="report-channel-status-badge" class="px-3 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Mostrando todos los canales</span>
         </div>
 
+        <!-- Selector de secciones visibles para pantalla e impresión -->
+        <div class="bg-white px-5 py-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 no-print">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs font-extrabold text-slate-600 uppercase tracking-wider mr-1">Secciones a mostrar / imprimir:</span>
+            <button type="button" id="sec-toggle-kpis" onclick="toggleReportSection('kpis')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-[#FDF2F4] text-[#C8102E] border-red-200 transition">
+              <span>✓ Tarjetas KPI</span>
+            </button>
+            <button type="button" id="sec-toggle-tramites" onclick="toggleReportSection('tramites')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-[#FDF2F4] text-[#C8102E] border-red-200 transition">
+              <span>✓ Trámites (Gráfico y Tabla)</span>
+            </button>
+            <button type="button" id="sec-toggle-diario" onclick="toggleReportSection('diario')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-[#FDF2F4] text-[#C8102E] border-red-200 transition">
+              <span>✓ Evolución Diaria</span>
+            </button>
+            <button type="button" id="sec-toggle-asesores" onclick="toggleReportSection('asesores')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-[#FDF2F4] text-[#C8102E] border-red-200 transition">
+              <span>✓ Asesores y Horarios</span>
+            </button>
+            <button type="button" id="sec-toggle-congelamientos" onclick="toggleReportSection('congelamientos')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border bg-[#FDF2F4] text-[#C8102E] border-red-200 transition">
+              <span>✓ Congelamientos</span>
+            </button>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button type="button" onclick="setReportSectionsPreset('ALL')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition">
+              Mostrar todo
+            </button>
+            <button type="button" onclick="setReportSectionsPreset('CONG_ONLY')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition">
+              Solo Congelamientos
+            </button>
+          </div>
+        </div>
+
+        <!-- Bloque 1: Tarjetas KPI Principales y Canales -->
+        <div id="report-section-kpis" class="space-y-6">
         <!-- 4 Tarjetas KPI Principales -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print-break-inside-avoid">
           
@@ -751,18 +822,19 @@
               <span id="kpi-channel-wati-pct" class="text-xs font-bold text-emerald-700">0%</span>
             </div>
             <div class="w-full h-2 bg-emerald-50 rounded-full overflow-hidden mt-2">
-              <div id="kpi-channel-wati-bar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+             <div id="kpi-channel-wati-bar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: 0%"></div>
             </div>
           </div>
         </div>
+        </div>
 
         <!-- Fila de Gráficos 1: Ranking Horizontal de Trámites (7 cols) + Tabla Resumen Demanda (5 cols) -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 print-break-inside-avoid">
+        <div id="report-section-tramites" class="grid grid-cols-1 lg:grid-cols-12 gap-6 print-break-inside-avoid">
           <div class="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
             <div class="flex items-center justify-between mb-4">
               <div>
                 <h3 class="text-base font-extrabold text-slate-800">¿Qué más pidieron los estudiantes?</h3>
-                <p class="text-xs text-slate-500">Ranking de los 11 trámites oficiales marcados con (X) en el periodo</p>
+              <p class="text-xs text-slate-500">Ranking de los 13 trámites oficiales marcados con (X) en el periodo</p>
               </div>
               <span id="total-marks-badge" class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-extrabold">0 trámites</span>
             </div>
@@ -791,8 +863,8 @@
           </div>
         </div>
 
-       <!-- Fila de Gráficos 2: Evolución Diaria -->
-        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm print-break-inside-avoid">
+    <!-- Fila de Gráficos 2: Evolución Diaria -->
+        <div id="report-section-diario" class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm print-break-inside-avoid">
           <div class="mb-4">
             <h3 class="text-base font-extrabold text-slate-800">Evolución Diaria de Atenciones en el Mes</h3>
             <p class="text-xs text-slate-500">Identificación de picos de demanda (inicio de módulo y fechas límite)</p>
@@ -802,8 +874,8 @@
           </div>
         </div>
 
-        <!-- Gráficos comparativos: Asesores y Franja Horaria -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 print-break-inside-avoid">
+       <!-- Gráficos comparativos: Asesores y Franja Horaria -->
+        <div id="report-section-asesores" class="grid grid-cols-1 lg:grid-cols-2 gap-6 print-break-inside-avoid">
           <div class="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-5">
             <div class="mb-3">
               <h3 id="report-advisors-title" class="text-sm font-extrabold text-slate-900">Comparativa de Atenciones por Asesor</h3>
@@ -812,6 +884,7 @@
             <div class="h-60">
               <canvas id="chart-advisors"></canvas>
             </div>
+            <div id="advisors-percentage-summary" class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1.5"></div>
           </div>
 
           <div class="bg-white rounded-3xl shadow-sm border border-slate-200/80 p-5">
@@ -825,6 +898,61 @@
             <div class="h-60">
               <canvas id="chart-hourly"></canvas>
             </div>
+          </div>
+        </div>
+
+      <!-- Reporte Específico de Congelamientos (Cartas y Aranceles) -->
+        <div id="report-section-congelamientos" class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5 print-break-inside-avoid">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#C8102E]"></span>
+                <h3 class="text-base font-extrabold text-slate-800">Reporte Específico de Congelamientos</h3>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">Control de cartas recepcionadas y desglose por arancel (Retiro Gratis, 300 Bs y 500 Bs)</p>
+            </div>
+            <button type="button" onclick="exportCongelamientosExcel()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5 no-print">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+              <span>Exportar Excel Congelamientos</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <p class="text-[11px] font-bold text-slate-500 uppercase">Total Congelamientos</p>
+              <p id="cong-kpi-total" class="text-2xl font-black text-slate-900 mt-1">0</p>
+              <p id="cong-kpi-share" class="text-[11px] text-slate-500 mt-1">0% del total de atenciones</p>
+            </div>
+            <div class="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80">
+              <p class="text-[11px] font-bold text-emerald-800 uppercase">Cartas Recepcionadas</p>
+              <p id="cong-kpi-cartas" class="text-2xl font-black text-emerald-700 mt-1">0 / 0</p>
+              <p id="cong-kpi-cartas-pct" class="text-[11px] text-emerald-700 font-semibold mt-1">0% con carta entregada</p>
+            </div>
+            <div class="p-4 rounded-2xl bg-sky-50/60 border border-sky-200/80">
+              <p class="text-[11px] font-bold text-sky-800 uppercase">Retiros Gratis (0 Bs)</p>
+              <p id="cong-kpi-gratis" class="text-2xl font-black text-sky-700 mt-1">0</p>
+              <p id="cong-kpi-gratis-pct" class="text-[11px] text-sky-700 font-semibold mt-1">0% de congelamientos</p>
+            </div>
+            <div class="p-4 rounded-2xl bg-[#FDF2F4] border border-red-200">
+              <p class="text-[11px] font-bold text-[#C8102E] uppercase">Con Arancel (300 / 500)</p>
+              <p id="cong-kpi-pagados" class="text-2xl font-black text-[#C8102E] mt-1">0</p>
+              <p id="cong-kpi-pagados-desglose" class="text-[11px] text-[#C8102E] font-semibold mt-1">0 de 300 Bs · 0 de 500 Bs</p>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] border-y border-slate-200">
+                <tr>
+                  <th class="py-2.5 px-3">Modalidad / Arancel</th>
+                  <th class="py-2.5 px-3 text-right">Cantidad</th>
+                  <th class="py-2.5 px-3 text-right">% del Total</th>
+                  <th class="py-2.5 px-3 text-right">Cartas Recibidas</th>
+                  <th class="py-2.5 px-3 text-right">Sin Carta</th>
+                </tr>
+              </thead>
+              <tbody id="cong-report-table-body" class="divide-y divide-slate-100"></tbody>
+            </table>
           </div>
         </div>
 
@@ -886,9 +1014,24 @@
             </button>
           </div>
         </div>
-        <div>
+       <div>
           <label class="block text-xs font-bold text-slate-700 uppercase mb-2">Trámites Solicitados (X)</label>
           <div id="edit-procedures-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+
+          <div id="edit-congelamiento-subpanel" class="hidden mt-3 rounded-2xl bg-red-50/70 border border-[#C8102E]/30 p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-extrabold text-[#C8102E] uppercase">Detalle de Congelamiento</span>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none bg-white px-2.5 py-1 rounded-lg border border-red-100">
+                <input type="checkbox" id="edit-cong-carta-check" class="rounded text-[#C8102E] focus:ring-[#C8102E]" />
+                <span class="text-xs font-bold text-slate-800">Carta recepcionada</span>
+              </label>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <button type="button" id="edit-cong-fee-btn-GRATIS" onclick="selectEditCongelamientoFee('GRATIS')" class="py-2 px-2.5 rounded-xl border text-xs font-extrabold transition">Retiro Gratis</button>
+              <button type="button" id="edit-cong-fee-btn-300" onclick="selectEditCongelamientoFee('300')" class="py-2 px-2.5 rounded-xl border text-xs font-extrabold transition">300 Bs</button>
+              <button type="button" id="edit-cong-fee-btn-500" onclick="selectEditCongelamientoFee('500')" class="py-2 px-2.5 rounded-xl border text-xs font-extrabold transition">500 Bs</button>
+            </div>
+          </div>
         </div>
         <div>
           <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Observaciones</label>
@@ -924,6 +1067,6 @@
   <!-- ===================================================================== -->
   <!-- LÓGICA DE APLICACIÓN, FIREBASE (AUTH + FIRESTORE) Y ANALÍTICA         -->
   <!-- ===================================================================== -->
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="./app.js?v=7"></script>
 </body>
 </html>
