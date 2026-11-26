@@ -286,29 +286,28 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         state.firebase.unsubscribeSnapshot();
       }
 
-      const currentMonth = getTodayISO().slice(0, 7);
-      state.loadedMonths.add(currentMonth);
+      const todayISO = getTodayISO();
 
       const recordsRef = collection(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones');
       const colRef = isAdvisorRole()
         ? query(
             recordsRef,
             where('asesorUid', '==', state.currentUser.uid),
-            where('mesAnio', '==', currentMonth)
+            where('fecha', '==', todayISO)
           )
-        : query(recordsRef, where('mesAnio', '==', currentMonth));
+        : query(recordsRef, where('fecha', '==', todayISO));
 
       state.firebase.unsubscribeSnapshot = onSnapshot(
         colRef,
         { includeMetadataChanges: true },
         (snapshot) => {
-          const loadedCurrentMonth = [];
+          const loadedToday = [];
           snapshot.forEach((docSnap) => {
-            loadedCurrentMonth.push(mapFirestoreRecord(docSnap));
+            loadedToday.push(mapFirestoreRecord(docSnap));
           });
 
-          const historicalRecords = state.records.filter((r) => r.mesAnio !== currentMonth);
-          const merged = [...loadedCurrentMonth, ...historicalRecords];
+          const historicalRecords = state.records.filter((r) => r.fecha !== todayISO);
+          const merged = [...loadedToday, ...historicalRecords];
           merged.sort((a, b) => {
             if (b.fecha !== a.fecha) return b.fecha.localeCompare(a.fecha);
             return (b.createdAt || 0) - (a.createdAt || 0);
@@ -711,13 +710,19 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         }
       });
 
-      if (tabName === 'historial') {
+     if (tabName === 'historial') {
         const paginationSelect = document.getElementById('pagination-size');
         if (paginationSelect) paginationSelect.value = '10';
         state.historyPage = 1;
         renderHistoryTable();
+        ensureMonthsLoaded([getTodayISO().slice(0, 7)]).then((loaded) => {
+          if (loaded) refreshAllViews();
+        });
       } else if (tabName === 'reportes') {
         renderMonthlyReport();
+        ensureMonthsLoaded([getTodayISO().slice(0, 7)]).then((loaded) => {
+          if (loaded) refreshAllViews();
+        });
       } else if (tabName === 'asesores') {
         loadAdvisorsList();
       } else if (tabName === 'registro') {
@@ -3523,7 +3528,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       }
       document.getElementById('quick-stat-today-date').textContent = formatDateDisplay(todayISO);
 
-      if (currentMonth !== previousMonth) {
+     if (currentMonth !== previousMonth) {
         const histMonth = document.getElementById('hist-filter-month');
         const repMonth = document.getElementById('report-month-select');
         const wasHistOnPrevMonth = histMonth?.value === previousMonth;
@@ -3535,10 +3540,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         populateDynamicFilters();
         if (wasHistOnPrevMonth && histMonth) histMonth.value = currentMonth;
         if (wasRepOnPrevMonth && repMonth) repMonth.value = currentMonth;
+      }
 
-        if (state.firebase.db && state.firebase.auth?.currentUser) {
-          startFirestoreRealtimeSync();
-        }
+      if (state.firebase.db && state.firebase.auth?.currentUser) {
+        startFirestoreRealtimeSync();
       }
 
       refreshAllViews();
