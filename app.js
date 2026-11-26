@@ -629,14 +629,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
       renderProcedureButtons();
 
-    // Si es supervisor, abrir directamente en Reporte Mensual; si es asesor, en Registro Rápido
+ // Abrir directamente en Registro Rápido para Asesores y Administrador (solo Supervisor entra en Reportes)
+    updateMonthLoadBanners();
     refreshAllViews();
-      if (user.role === 'Supervisor' || user.role === 'Administrador') {
-        switchTab('reportes');
-      } else {
-        switchTab('registro');
-        setTimeout(() => document.getElementById('entry-registro')?.focus(), 100);
-      }
+    if (user.role === 'Supervisor') {
+      switchTab('reportes');
+    } else {
+      switchTab('registro');
+    }
     }
 
     window.confirmLogout = function () {
@@ -710,19 +710,15 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         }
       });
 
-     if (tabName === 'historial') {
+    if (tabName === 'historial') {
         const paginationSelect = document.getElementById('pagination-size');
         if (paginationSelect) paginationSelect.value = '10';
         state.historyPage = 1;
         renderHistoryTable();
-        ensureMonthsLoaded([getTodayISO().slice(0, 7)]).then((loaded) => {
-          if (loaded) refreshAllViews();
-        });
+        promptLoadFullMonth(getTodayISO().slice(0, 7));
       } else if (tabName === 'reportes') {
         renderMonthlyReport();
-        ensureMonthsLoaded([getTodayISO().slice(0, 7)]).then((loaded) => {
-          if (loaded) refreshAllViews();
-        });
+        promptLoadFullMonth(getTodayISO().slice(0, 7));
       } else if (tabName === 'asesores') {
         loadAdvisorsList();
       } else if (tabName === 'registro') {
@@ -1506,10 +1502,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         bindRecordActionHandlers(container);
       }
 
-      // Actualizar tarjetas superiores de Registro Rápido
+      // Actualizar tarjetas superiores de Registro Rápido (Meta Diaria = 250)
       const advisorMonthRecords = displayRecords.filter((r) => r.mesAnio === currentMonth);
-      const goalTarget = isSupervisor || isAdmin ? 2500 : 1250;
-      const pct = Math.min(100, Math.round((advisorMonthRecords.length / goalTarget) * 100));
+      const dailyGoalTarget = 250;
+      const dailyPct = Math.min(100, Math.round((todayRecords.length / dailyGoalTarget) * 100));
 
       let repeatRowsCount = 0;
       advisorMonthRecords.forEach((r) => {
@@ -1517,9 +1513,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       });
 
       document.getElementById('quick-stat-today').textContent = todayRecords.length.toLocaleString('es-BO');
-      document.getElementById('quick-stat-month').textContent = advisorMonthRecords.length.toLocaleString('es-BO');
-      document.getElementById('quick-stat-month-pct').textContent = `${pct}%`;
-      document.getElementById('quick-stat-month-bar').style.width = `${pct}%`;
+      const dailyCountEl = document.getElementById('quick-stat-daily-count');
+      const dailyPctEl = document.getElementById('quick-stat-daily-pct');
+      const dailyBarEl = document.getElementById('quick-stat-daily-bar');
+      if (dailyCountEl) dailyCountEl.textContent = todayRecords.length.toLocaleString('es-BO');
+      if (dailyPctEl) dailyPctEl.textContent = `${dailyPct}%`;
+      if (dailyBarEl) dailyBarEl.style.width = `${dailyPct}%`;
       document.getElementById('quick-stat-repeats').textContent = repeatRowsCount.toLocaleString('es-BO');
     }
 
@@ -1569,9 +1568,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       });
     }
 
-    window.resetHistoryPageAndRender = async function () {
+   window.resetHistoryPageAndRender = function () {
       state.historyPage = 1;
       renderHistoryTable();
+
+      // Si aún está en Modo Ahorro (solo hoy), filtrar únicamente en memoria local sin consultar Firestore
+      if (!state.loadedMonths.has(getTodayISO().slice(0, 7))) return;
 
       const monthFilter = document.getElementById('hist-filter-month')?.value || 'ALL';
       const dateRange = getDateRangeFilter('hist');
@@ -1583,10 +1585,25 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           ? getRecentMonthsList(12)
           : [monthFilter];
 
-      const loadedNew = await ensureMonthsLoaded(monthsNeeded);
-      if (loadedNew) {
-        renderHistoryTable();
-      }
+      const missing = monthsNeeded.filter((ym) => ym && !state.loadedMonths.has(ym));
+      if (missing.length === 0) return;
+
+      const desc = missing.length === 1
+        ? `el mes de ${formatMonthName(missing[0])}`
+        : `${missing.length} meses (${formatMonthName(missing[missing.length - 1])} a ${formatMonthName(missing[0])})`;
+
+      openConfirmModal(
+        'Consultar Base de Datos (Historial)',
+        `El filtro seleccionado incluye ${desc}, que aún no está descargado. ¿Desea consultar Firestore para cargar estos registros?`,
+        async () => {
+          const loadedNew = await ensureMonthsLoaded(missing);
+          if (loadedNew) {
+            updateMonthLoadBanners();
+            refreshAllViews();
+            showToast('Registros históricos cargados correctamente.', 'success');
+          }
+        }
+      );
     };
 
    window.clearHistoryFilters = function () {
@@ -1996,8 +2013,59 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         }).join('');
       }
 
-      document.getElementById('modal-student-timeline').classList.remove('hidden');
+    document.getElementById('modal-student-timeline').classList.remove('hidden');
     };
+
+    window.promptLoadFullMonth = function (monthStr) {
+      const targetMonth = monthStr || getTodayISO().slice(0, 7);
+      if (state.loadedMonths.has(targetMonth)) return;
+
+      openConfirmModal(
+        'Cargar Historial y Reporte del Mes',
+        'Por ahorro de lecturas, actualmente solo están cargadas las atenciones de hoy. ¿Desea descargar todo el acumulado del mes para visualizar el historial completo y generar los gráficos KPI?',
+        async () => {
+          const loaded = await ensureMonthsLoaded([targetMonth]);
+          if (loaded) {
+            updateMonthLoadBanners();
+            refreshAllViews();
+            showToast('Historial y reporte mensual cargados correctamente.', 'success');
+          }
+        }
+      );
+    };
+
+   function updateMonthLoadBanners() {
+      const currentMonth = getTodayISO().slice(0, 7);
+      const isLoaded = state.loadedMonths.has(currentMonth);
+
+      document.querySelectorAll('.month-demand-banner').forEach((el) => {
+        el.classList.toggle('hidden', isLoaded);
+      });
+
+      // Bloquear selectores de rango de fechas y mes mientras esté en Modo Ahorro (solo hoy)
+      const periodControls = [
+        'hist-date-from',
+        'hist-date-to',
+        'hist-filter-month',
+        'report-date-from',
+        'report-date-to',
+        'report-month-select'
+      ];
+
+      periodControls.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = !isLoaded;
+        el.classList.toggle('opacity-50', !isLoaded);
+        el.classList.toggle('cursor-not-allowed', !isLoaded);
+        el.classList.toggle('bg-slate-100', !isLoaded);
+        el.classList.toggle('bg-white', isLoaded && id.startsWith('hist-'));
+        el.classList.toggle('bg-slate-50', isLoaded && id.startsWith('report-'));
+        el.title = isLoaded
+          ? ''
+          : 'Modo Ahorro activo: pulse "Cargar Mes Completo" para habilitar consultas por fechas o meses.';
+      });
+    }
 
     // =========================================================================
     // 10. DASHBOARD DE REPORTE MENSUAL, KPIs Y GRÁFICOS (Chart.js)
@@ -2233,10 +2301,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         ? 'h-full bg-emerald-600 rounded-full transition-all duration-500'
         : 'h-full bg-[#C8102E] rounded-full transition-all duration-500';
 
-      document.getElementById('kpi-total-label').textContent =
+     document.getElementById('kpi-total-label').textContent =
         dateRange.hasRange ? 'Total Atenciones del Periodo' : 'Total Atenciones Mes';
       document.getElementById('kpi-goal-caption').textContent =
-        dateRange.hasRange ? 'Meta mensual no aplicable' : 'Cumplimiento meta';
+        dateRange.hasRange ? 'Meta mensual no aplicable' : 'Meta mensual por asesor';
 
       const studentFreq = new Map();
       filteredRecords.forEach((r) => {
@@ -2482,8 +2550,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     showToast(`Reporte de Retiro / Congelamiento exportado (${congRows.length} registros).`, 'success');
     };
 
-    window.renderMonthlyReport = async function () {
+ window.handleRenderMonthlyReport = function () {
       renderMonthlyReport();
+
+      // Si aún está en Modo Ahorro (solo hoy), actualizar gráficos solo con los datos de hoy
+      if (!state.loadedMonths.has(getTodayISO().slice(0, 7))) return;
 
       const selectedMonth = document.getElementById('report-month-select')?.value || getTodayISO().slice(0, 7);
       const dateRange = getDateRangeFilter('report');
@@ -2493,12 +2564,26 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         ? getMonthsBetweenDates(dateRange.from, dateRange.to)
         : [selectedMonth];
 
-      const loadedNew = await ensureMonthsLoaded(monthsNeeded);
-      if (loadedNew) {
-        renderMonthlyReport();
-      }
-    };
+      const missing = monthsNeeded.filter((ym) => ym && !state.loadedMonths.has(ym));
+      if (missing.length === 0) return;
 
+      const desc = missing.length === 1
+        ? `el mes de ${formatMonthName(missing[0])}`
+        : `${missing.length} meses (${formatMonthName(missing[missing.length - 1])} a ${formatMonthName(missing[0])})`;
+
+      openConfirmModal(
+        'Generar Reporte desde Base de Datos',
+        `El periodo elegido requiere descargar ${desc} desde Firestore. ¿Desea cargar los datos para generar las estadísticas completas?`,
+        async () => {
+          const loadedNew = await ensureMonthsLoaded(missing);
+          if (loadedNew) {
+            updateMonthLoadBanners();
+            refreshAllViews();
+            showToast('Datos del reporte cargados correctamente.', 'success');
+          }
+        }
+      );
+    };
     window.clearReportFilters = function () {
       document.getElementById('report-month-select').value = getTodayISO().slice(0, 7);
       document.getElementById('report-date-from').value = '';
@@ -3546,6 +3631,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         startFirestoreRealtimeSync();
       }
 
+      updateMonthLoadBanners();
       refreshAllViews();
       const currentCode = document.getElementById('entry-registro')?.value.trim();
       if (currentCode) handleStudentCodeInput(currentCode);
