@@ -1,8 +1,9 @@
 import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import {
+  import {
       getAuth,
       signInWithCustomToken,
       signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
       signOut
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
@@ -117,8 +118,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       channelAtencion: 'plataforma',
       editChannelAtencion: 'plataforma',
       reportChannelFilter: 'ALL',
-      activeTab: 'registro',
+      todayFeedChannelFilter: 'ALL',
+      todayFeedSearch: '',
+     activeTab: 'registro',
       records: [], // Todos los registros sincronizados (Firestore o sesión activa)
+      advisors: [],
      selectedProcedures: new Set(),
       editSelectedProcedures: new Set(),
       congelamientoFee: '',
@@ -498,6 +502,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         return;
       }
 
+      if (profile.activo === false && !isInitialAdmin) {
+        await signOut(state.firebase.auth);
+        showToast('Su cuenta de asesor se encuentra desactivada. Contacte al Administrador SAE.', 'error');
+        return;
+      }
+
       const authEmail = String(authUser.email || emailFallback).trim().toLowerCase();
       const profileEmail = String(profile.email || (isInitialAdmin ? authEmail : '')).trim().toLowerCase();
      const isAdmin = isInitialAdmin
@@ -607,6 +617,17 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       document.getElementById('quick-stat-today-date').textContent = formatDateDisplay(today);
       startDateRolloverWatcher();
 
+      const isAdminUser = user.role === 'Administrador';
+      document.getElementById('nav-tab-asesores')?.classList.toggle('hidden', !isAdminUser);
+      const mobAsesoresBtn = document.getElementById('mob-tab-asesores');
+      const mobNavGrid = document.getElementById('mob-nav-grid');
+      if (mobAsesoresBtn) mobAsesoresBtn.classList.toggle('hidden', !isAdminUser);
+      if (mobNavGrid) {
+        mobNavGrid.classList.toggle('grid-cols-4', isAdminUser);
+        mobNavGrid.classList.toggle('grid-cols-3', !isAdminUser);
+      }
+      if (isAdminUser) loadAdvisorsList();
+
       renderProcedureButtons();
 
     // Si es supervisor, abrir directamente en Reporte Mensual; si es asesor, en Registro Rápido
@@ -665,32 +686,40 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     };
 
     window.switchTab = function (tabName) {
+      if (tabName === 'asesores' && state.currentUser?.role !== 'Administrador') return;
       state.activeTab = tabName;
-      const tabs = ['registro', 'historial', 'reportes'];
+      const tabs = ['registro', 'historial', 'reportes', 'asesores'];
 
       tabs.forEach((t) => {
         const viewEl = document.getElementById(`view-${t}`);
         const navBtn = document.getElementById(`nav-tab-${t}`);
         const mobBtn = document.getElementById(`mob-tab-${t}`);
+        if (!viewEl || !navBtn || !mobBtn) return;
 
         if (t === tabName) {
           viewEl.classList.remove('hidden');
-          navBtn.className = 'px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-[#C8102E] text-white shadow-sm';
-          mobBtn.className = 'py-2.5 text-xs font-bold text-[#C8102E] border-b-2 border-[#C8102E] bg-white';
+          navBtn.classList.remove('text-slate-600', 'hover:text-slate-900');
+          navBtn.classList.add('bg-[#C8102E]', 'text-white', 'shadow-sm');
+          mobBtn.classList.remove('text-slate-600');
+          mobBtn.classList.add('text-[#C8102E]', 'border-b-2', 'border-[#C8102E]', 'bg-white');
         } else {
           viewEl.classList.add('hidden');
-          navBtn.className = 'px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 text-slate-600 hover:text-slate-900';
-          mobBtn.className = 'py-2.5 text-xs font-bold text-slate-600';
+          navBtn.classList.remove('bg-[#C8102E]', 'text-white', 'shadow-sm');
+          navBtn.classList.add('text-slate-600', 'hover:text-slate-900');
+          mobBtn.classList.remove('text-[#C8102E]', 'border-b-2', 'border-[#C8102E]', 'bg-white');
+          mobBtn.classList.add('text-slate-600');
         }
       });
 
-          if (tabName === 'historial') {
+      if (tabName === 'historial') {
         const paginationSelect = document.getElementById('pagination-size');
         if (paginationSelect) paginationSelect.value = '10';
         state.historyPage = 1;
         renderHistoryTable();
       } else if (tabName === 'reportes') {
         renderMonthlyReport();
+      } else if (tabName === 'asesores') {
+        loadAdvisorsList();
       } else if (tabName === 'registro') {
         renderTodayFeed();
         document.getElementById('entry-registro')?.focus();
@@ -1320,6 +1349,58 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       };
     }
 
+    window.setTodayFeedChannelFilter = function (channel) {
+      state.todayFeedChannelFilter = ['plataforma', 'wati'].includes(channel) ? channel : 'ALL';
+      renderTodayFeed();
+    };
+
+    window.handleTodayFeedSearch = function (rawVal) {
+      let val = String(rawVal || '').trim();
+      if (/^0+[0-9]{4,6}A?$/i.test(val)) {
+        val = val.toUpperCase().replace(/^0+/, '');
+        const inp = document.getElementById('today-feed-search');
+        if (inp) inp.value = val;
+      }
+      state.todayFeedSearch = val.toLowerCase();
+      renderTodayFeed();
+    };
+
+    window.clearTodayFeedFilters = function () {
+      state.todayFeedChannelFilter = 'ALL';
+      state.todayFeedSearch = '';
+      const inp = document.getElementById('today-feed-search');
+      if (inp) inp.value = '';
+      renderTodayFeed();
+    };
+
+    function updateTodayChannelPillsUI(allCount, platCount, watiCount) {
+      const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      setTxt('today-count-all', allCount);
+      setTxt('today-count-plat', platCount);
+      setTxt('today-count-wati', watiCount);
+
+      const active = state.todayFeedChannelFilter || 'ALL';
+      const btnAll = document.getElementById('today-filter-btn-ALL');
+      const btnPlat = document.getElementById('today-filter-btn-plataforma');
+      const btnWati = document.getElementById('today-filter-btn-wati');
+
+      if (btnAll) {
+        btnAll.className = active === 'ALL'
+          ? 'px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-800 text-white shadow-sm transition'
+          : 'px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
+      }
+      if (btnPlat) {
+        btnPlat.className = active === 'plataforma'
+          ? 'px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-[#C8102E] text-white shadow-sm transition'
+          : 'px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-200 hover:bg-red-100 transition';
+      }
+      if (btnWati) {
+        btnWati.className = active === 'wati'
+          ? 'px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-600 text-white shadow-sm transition'
+          : 'px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition';
+      }
+    }
+
     function renderTodayFeed() {
       const todayISO = document.getElementById('entry-fecha').value || getTodayISO();
       const currentMonth = todayISO.slice(0, 7);
@@ -1336,59 +1417,89 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const monthCounts = getStudentMonthCounts(displayRecords);
       const todayRecords = displayRecords.filter((r) => r.fecha === todayISO);
 
-      document.getElementById('today-feed-subtitle').textContent =
-        `${formatDateDisplay(todayISO)} • ${todayRecords.length} atenciones registradas`;
+      const watiToday = todayRecords.filter((r) => r.canalAtencion === 'wati').length;
+      const platToday = todayRecords.length - watiToday;
+      updateTodayChannelPillsUI(todayRecords.length, platToday, watiToday);
+
+      const channelFilter = state.todayFeedChannelFilter || 'ALL';
+      const searchFilter = state.todayFeedSearch || '';
+      const hasActiveFeedFilter = channelFilter !== 'ALL' || Boolean(searchFilter);
+
+      const clearBtn = document.getElementById('today-feed-clear-btn');
+      if (clearBtn) clearBtn.classList.toggle('hidden', !hasActiveFeedFilter);
+
+      const filteredToday = todayRecords.filter((rec) => {
+        if (channelFilter !== 'ALL' && (rec.canalAtencion || 'plataforma') !== channelFilter) return false;
+        if (searchFilter) {
+          const matchCode = rec.registro.toLowerCase().includes(searchFilter);
+          const matchObs = (rec.observaciones || '').toLowerCase().includes(searchFilter);
+          if (!matchCode && !matchObs) return false;
+        }
+        return true;
+      });
+
+      document.getElementById('today-feed-subtitle').textContent = hasActiveFeedFilter
+        ? `${formatDateDisplay(todayISO)} • Mostrando ${filteredToday.length} de ${todayRecords.length} atenciones`
+        : `${formatDateDisplay(todayISO)} • ${todayRecords.length} atenciones registradas`;
 
       const container = document.getElementById('today-feed-container');
-      if (todayRecords.length === 0) {
+      if (filteredToday.length === 0) {
         container.innerHTML = `
           <div class="p-10 text-center">
-            <p class="text-sm font-bold text-slate-600">Aún no hay registros en esta fecha</p>
-            <p class="text-xs text-slate-400 mt-1">Complete el formulario de la izquierda para comenzar.</p>
+            <p class="text-sm font-bold text-slate-600">${
+              hasActiveFeedFilter
+                ? 'Ningún registro de hoy coincide con el filtro'
+                : 'Aún no hay registros en esta fecha'
+            }</p>
+            <p class="text-xs text-slate-400 mt-1">${
+              hasActiveFeedFilter
+                ? 'Pruebe con otro código o pulse ✕ para mostrar todos los de hoy.'
+                : 'Complete el formulario de la izquierda para comenzar.'
+            }</p>
           </div>
         `;
-        return;
+      } else {
+        const listToRender = hasActiveFeedFilter ? filteredToday : filteredToday.slice(0, 40);
+        container.innerHTML = listToRender.map((rec) => {
+          const isRepeat = (monthCounts.get(`${rec.mesAnio}|${rec.registro}`) || 0) > 1;
+          const activeLabels = PROCEDURES.filter((p) => rec.tramites?.[p.key]).map((p) => p.short);
+          return `
+            <div class="p-3.5 hover:bg-slate-50 transition flex items-center justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-2.5 py-0.5 rounded-lg text-xs font-black tracking-wide ${
+                    isRepeat
+                      ? 'bg-orange-100 text-orange-900 border border-orange-300'
+                      : 'bg-slate-100 text-slate-800'
+                  }">${escapeHtml(rec.registro)}</span>
+                  ${isRepeat ? '<span class="text-[10px] font-extrabold text-orange-600 uppercase">Re-consulta</span>' : ''}
+                  ${rec.pendingSync ? '<span class="text-[10px] font-extrabold text-amber-700 uppercase">Pendiente</span>' : ''}
+                  <span class="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
+                    rec.canalAtencion === 'wati'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-red-100 text-[#C8102E]'
+                  }">${rec.canalAtencion === 'wati' ? 'WATI' : 'Plataforma'}</span>
+                  <span class="text-[11px] text-slate-400 truncate">• ${escapeHtml(rec.observaciones || '-')}</span>
+                </div>
+                <div class="flex flex-wrap gap-1 mt-1.5">
+                  ${activeLabels.map((lbl) => `
+                    <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-100">X ${lbl}</span>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <button type="button" data-record-action="edit" data-record-id="${escapeHtml(rec.id)}" title="Editar" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+                </button>
+                ${canDeleteRecords ? `<button type="button" data-record-action="delete" data-record-id="${escapeHtml(rec.id)}" data-record-code="${escapeHtml(rec.registro)}" title="Eliminar" class="p-1.5 rounded-lg text-slate-400 hover:text-[#C8102E] hover:bg-red-50">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                </button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+        bindRecordActionHandlers(container);
       }
-
-      container.innerHTML = todayRecords.slice(0, 30).map((rec) => {
-        const isRepeat = (monthCounts.get(`${rec.mesAnio}|${rec.registro}`) || 0) > 1;
-        const activeLabels = PROCEDURES.filter((p) => rec.tramites?.[p.key]).map((p) => p.short);
-        return `
-          <div class="p-3.5 hover:bg-slate-50 transition flex items-center justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <span class="px-2.5 py-0.5 rounded-lg text-xs font-black tracking-wide ${
-                  isRepeat
-                    ? 'bg-orange-100 text-orange-900 border border-orange-300'
-                    : 'bg-slate-100 text-slate-800'
-                }">${escapeHtml(rec.registro)}</span>
-                ${isRepeat ? '<span class="text-[10px] font-extrabold text-orange-600 uppercase">Re-consulta</span>' : ''}
-                ${rec.pendingSync ? '<span class="text-[10px] font-extrabold text-amber-700 uppercase">Pendiente de sincronizar</span>' : ''}
-               <span class="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
-                  rec.canalAtencion === 'wati'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-red-100 text-[#C8102E]'
-                }">${rec.canalAtencion === 'wati' ? 'WATI' : 'Plataforma'}</span>
-                <span class="text-[11px] text-slate-400 truncate">• ${escapeHtml(rec.observaciones || '-')}</span>
-              </div>
-              <div class="flex flex-wrap gap-1 mt-1.5">
-                ${activeLabels.map((lbl) => `
-                  <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-100">X ${lbl}</span>
-                `).join('')}
-              </div>
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-              <button type="button" data-record-action="edit" data-record-id="${escapeHtml(rec.id)}" title="Editar" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
-              </button>
-              ${canDeleteRecords ? `<button type="button" data-record-action="delete" data-record-id="${escapeHtml(rec.id)}" data-record-code="${escapeHtml(rec.registro)}" title="Eliminar" class="p-1.5 rounded-lg text-slate-400 hover:text-[#C8102E] hover:bg-red-50">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
-              </button>` : ''}
-            </div>
-          </div>
-        `;
-      }).join('');
-      bindRecordActionHandlers(container);
 
       // Actualizar tarjetas superiores de Registro Rápido
       const advisorMonthRecords = displayRecords.filter((r) => r.mesAnio === currentMonth);
@@ -1542,8 +1653,13 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
                 <span class="block">${escapeHtml(formatDateDisplay(rec.fecha))}</span>
                 <span class="block text-[10px] font-medium text-slate-400 mt-0.5">${formatTimeDisplay(rec.createdAt)}</span>
               </td>
-              <td class="py-2.5 px-3 border-r border-slate-100 ${isRepeat ? 'bg-orange-100/90' : ''}">
-                <span class="font-black ${isRepeat ? 'text-orange-900' : 'text-slate-900'}">${escapeHtml(rec.registro)}</span>
+             <td class="py-2.5 px-3 border-r border-slate-100 ${isRepeat ? 'bg-orange-100/90' : ''}">
+                <button
+                  type="button"
+                  onclick="openStudentTimelineModal('${escapeHtml(rec.registro)}')"
+                  title="Ver expediente cronológico de ${escapeHtml(rec.registro)}"
+                  class="font-black underline decoration-dotted underline-offset-2 hover:text-[#C8102E] transition ${isRepeat ? 'text-orange-900' : 'text-slate-900'}"
+                >${escapeHtml(rec.registro)}</button>
                 ${isRepeat ? `<span class="ml-1 text-[10px] font-bold text-orange-700" title="Atendido ${repeatTotal} veces en este mes">(${repeatTotal}x)</span>` : ''}
               </td>
               ${procCells}
@@ -1566,7 +1682,38 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           `;
         }).join('');
       }
-      bindRecordActionHandlers(tbody);
+     bindRecordActionHandlers(tbody);
+
+      // Renderizar Fila de Totales Dinámicos al pie de la tabla
+      const tfoot = document.getElementById('history-table-foot');
+      if (tfoot) {
+        if (filtered.length === 0) {
+          tfoot.innerHTML = '';
+        } else {
+          const uniqueStudents = new Set(filtered.map((r) => r.registro)).size;
+          const watiTotal = filtered.filter((r) => r.canalAtencion === 'wati').length;
+          const platTotal = filtered.length - watiTotal;
+          let totalMarks = 0;
+
+          const procTotalsHtml = PROCEDURES.map((p) => {
+            const cnt = filtered.reduce((acc, r) => acc + (r.tramites?.[p.key] ? 1 : 0), 0);
+            totalMarks += cnt;
+            return `<td class="py-2.5 px-2 text-center border-r border-red-200/80 ${cnt > 0 ? 'text-[#C8102E] font-black' : 'text-red-300 font-semibold'}">${cnt}</td>`;
+          }).join('');
+
+          tfoot.innerHTML = `
+            <tr>
+              <td class="py-2.5 px-3 border-r border-red-200/80 text-[#9E0B22]">TOTALES (${filtered.length})</td>
+              <td class="py-2.5 px-3 border-r border-red-200/80 text-slate-700">${uniqueStudents} únicos</td>
+              ${procTotalsHtml}
+              <td class="py-2.5 px-3 border-r border-red-200/80 text-[#C8102E]">${totalMarks} trámites (X)</td>
+              <td class="py-2.5 px-3 border-r border-red-200/80 text-slate-700">${platTotal} Plat · ${watiTotal} WATI</td>
+              <td class="py-2.5 px-3 border-r border-red-200/80 text-slate-400">—</td>
+              <td class="py-2.5 px-3 text-center text-slate-400">—</td>
+            </tr>
+          `;
+        }
+      }
 
       const showingFrom = filtered.length === 0 ? 0 : startIdx + 1;
       const showingTo = Math.min(filtered.length, startIdx + pageSize);
@@ -1784,9 +1931,67 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
             state.records = state.records.filter((r) => r.id !== id);
             refreshAllViews();
           }
-          showToast(`Registro ${registroCode} eliminado.`, 'info');
+         showToast(`Registro ${registroCode} eliminado.`, 'info');
         }
       );
+    };
+
+    window.openStudentTimelineModal = function (studentCode) {
+      if (!studentCode) return;
+      const studentRecords = state.records
+        .filter((r) => r.registro === studentCode)
+        .sort((a, b) => {
+          if (b.fecha !== a.fecha) return b.fecha.localeCompare(a.fecha);
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        });
+
+      document.getElementById('timeline-modal-title').textContent = `Estudiante: ${studentCode}`;
+
+      const totalProcedures = studentRecords.reduce(
+        (acc, r) => acc + PROCEDURES.filter((p) => r.tramites?.[p.key]).length,
+        0
+      );
+      const watiVisits = studentRecords.filter((r) => r.canalAtencion === 'wati').length;
+      const platVisits = studentRecords.length - watiVisits;
+
+      document.getElementById('timeline-modal-summary').innerHTML = `
+        <span>${studentRecords.length} atención(es) en historial cargado · ${totalProcedures} trámite(s)</span>
+        <span class="text-slate-500">${platVisits} Plataforma · ${watiVisits} WATI</span>
+      `;
+
+      const body = document.getElementById('timeline-modal-body');
+      if (studentRecords.length === 0) {
+        body.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">No se encontraron atenciones cargadas para este estudiante.</p>`;
+      } else {
+        body.innerHTML = studentRecords.map((rec, idx) => {
+          const activeProcs = PROCEDURES.filter((p) => rec.tramites?.[p.key]).map((p) => p.label);
+          const isWati = rec.canalAtencion === 'wati';
+          return `
+            <div class="p-4 rounded-2xl border ${idx === 0 ? 'border-orange-300 bg-orange-50/40' : 'border-slate-200 bg-white'} space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-black text-slate-800">${escapeHtml(formatDateDisplay(rec.fecha))} · ${formatTimeDisplay(rec.createdAt)}</span>
+                  ${idx === 0 ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-200 text-orange-900">Más reciente</span>' : ''}
+                </div>
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                  isWati ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-[#C8102E]'
+                }">${isWati ? 'WATI' : 'Plataforma'}</span>
+              </div>
+              <p class="text-xs text-slate-600"><span class="font-bold text-slate-700">Asesor:</span> ${escapeHtml(rec.asesor || '-')}</p>
+              <div class="flex flex-wrap gap-1.5">
+                ${activeProcs.map((lbl) => `
+                  <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-100">X ${lbl}</span>
+                `).join('')}
+              </div>
+              <p class="text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                <span class="font-bold text-slate-700">Obs:</span> ${escapeHtml(rec.observaciones || '-')}
+              </p>
+            </div>
+          `;
+        }).join('');
+      }
+
+      document.getElementById('modal-student-timeline').classList.remove('hidden');
     };
 
     // =========================================================================
@@ -2912,9 +3117,294 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           option.textContent = advisor;
           repAdv.appendChild(option);
         });
-        repAdv.value = sortedAdvisors.includes(prevRepAdv) ? prevRepAdv : 'ALL';
+       repAdv.value = sortedAdvisors.includes(prevRepAdv) ? prevRepAdv : 'ALL';
       }
     }
+
+    // =========================================================================
+    // 12B. GESTIÓN DE ASESORES Y ROLES (ADMINISTRADOR)
+    // =========================================================================
+    window.loadAdvisorsList = async function () {
+      if (state.currentUser?.role !== 'Administrador' || !state.firebase.db) return;
+      try {
+        const snap = await getDocs(collection(state.firebase.db, 'usuarios'));
+        const list = [];
+        snap.forEach((docSnap) => {
+          const d = docSnap.data();
+          list.push({
+            uid: docSnap.id,
+            nombre: String(d.nombre || '').trim(),
+            email: String(d.email || '').trim().toLowerCase(),
+            telefono: String(d.telefono || '').trim(),
+            rol: String(d.rol || 'Asesor').trim(),
+            activo: d.activo !== false
+          });
+        });
+        list.sort((a, b) => a.nombre.localeCompare(b.nombre));
+        state.advisors = list;
+        renderAdvisorsTable();
+      } catch (err) {
+        console.error('Error cargando lista de asesores:', err);
+        showToast(`No se pudo cargar la lista de asesores (${err?.code || 'error'}).`, 'error');
+      }
+    };
+
+    window.renderAdvisorsTable = function () {
+      const tbody = document.getElementById('advisors-table-body');
+      const badge = document.getElementById('advisors-total-badge');
+      if (!tbody) return;
+
+      const term = (document.getElementById('advisors-search-input')?.value || '').trim().toLowerCase();
+      const filtered = state.advisors.filter((u) =>
+        !term
+        || u.nombre.toLowerCase().includes(term)
+        || u.email.toLowerCase().includes(term)
+        || u.rol.toLowerCase().includes(term)
+      );
+
+      if (badge) badge.textContent = `${filtered.length} usuario${filtered.length === 1 ? '' : 's'}`;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="py-10 text-center text-slate-400">No se encontraron asesores con ese filtro.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((u) => {
+        const isRootAdmin = u.email === INITIAL_ADMIN_EMAIL;
+        return `
+          <tr class="hover:bg-slate-50/90 transition ${u.activo ? '' : 'opacity-60 bg-slate-50'}">
+            <td class="py-3 px-4">
+              <p class="font-extrabold text-slate-800">${escapeHtml(u.nombre || 'Sin nombre')}</p>
+              <p class="text-[11px] text-slate-500">${escapeHtml(u.email)}</p>
+            </td>
+            <td class="py-3 px-3 font-semibold text-slate-700">${escapeHtml(u.telefono || '-')}</td>
+            <td class="py-3 px-3">
+              <select
+                ${isRootAdmin ? 'disabled' : ''}
+                onchange="changeAdvisorRole('${escapeHtml(u.uid)}', this.value)"
+                class="px-2.5 py-1.5 rounded-lg border text-xs font-bold ${
+                  u.rol === 'Administrador'
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : u.rol === 'Asesor Especial'
+                      ? 'bg-[#FDF2F4] text-[#C8102E] border-red-200'
+                      : 'bg-white text-slate-700 border-slate-300'
+                }"
+              >
+                <option value="Asesor" ${u.rol === 'Asesor' ? 'selected' : ''}>Asesor (9 trámites)</option>
+                <option value="Asesor Especial" ${u.rol === 'Asesor Especial' ? 'selected' : ''}>Asesor Especial (12 trámites)</option>
+                <option value="Administrador" ${u.rol === 'Administrador' ? 'selected' : ''}>Administrador</option>
+              </select>
+            </td>
+            <td class="py-3 px-3 text-center">
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
+                u.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-[#C8102E]'
+              }">
+                ${u.activo ? 'ACTIVO' : 'INACTIVO'}
+              </span>
+            </td>
+           <td class="py-3 px-4 text-right whitespace-nowrap">
+              <div class="inline-flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onclick="openEditAdvisorModal('${escapeHtml(u.uid)}')"
+                  title="Editar datos o rol"
+                  class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition"
+                >
+                  Editar
+                </button>
+                ${isRootAdmin
+                  ? '<span class="px-2 py-1 text-[10px] font-bold text-slate-400">Principal</span>'
+                  : `<button
+                      type="button"
+                      onclick="toggleAdvisorActiveStatus('${escapeHtml(u.uid)}', ${!u.activo})"
+                      class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition ${
+                        u.activo
+                          ? 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                      }"
+                    >
+                      ${u.activo ? 'Suspender' : 'Activar'}
+                    </button>
+                    <button
+                      type="button"
+                      onclick="requestDeleteAdvisor('${escapeHtml(u.uid)}', '${escapeHtml(u.nombre)}')"
+                      title="Eliminar perfil de asesor"
+                      class="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-[#C8102E] border border-red-200 font-bold text-[11px] transition"
+                    >
+                      Eliminar
+                    </button>`}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    window.openEditAdvisorModal = function (uid) {
+      if (state.currentUser?.role !== 'Administrador') return;
+      const adv = state.advisors.find((a) => a.uid === uid);
+      if (!adv) return;
+
+      const isRootAdmin = adv.email === INITIAL_ADMIN_EMAIL;
+      document.getElementById('edit-adv-uid').value = adv.uid;
+      document.getElementById('edit-adv-email').value = adv.email;
+      document.getElementById('edit-adv-nombre').value = adv.nombre;
+      document.getElementById('edit-adv-telefono').value = adv.telefono;
+
+      const roleSelect = document.getElementById('edit-adv-rol');
+      roleSelect.value = adv.rol;
+      roleSelect.disabled = isRootAdmin;
+
+      document.getElementById('modal-edit-advisor').classList.remove('hidden');
+    };
+
+    window.handleUpdateAdvisor = async function (e) {
+      e.preventDefault();
+      if (state.currentUser?.role !== 'Administrador') return;
+
+      const uid = document.getElementById('edit-adv-uid').value;
+      const nombre = document.getElementById('edit-adv-nombre').value.trim();
+      const telefono = document.getElementById('edit-adv-telefono').value.trim();
+      const rol = document.getElementById('edit-adv-rol').value;
+
+      if (!nombre || !telefono) {
+        showToast('El nombre y el teléfono son obligatorios.', 'error');
+        return;
+      }
+
+      const target = state.advisors.find((a) => a.uid === uid);
+      const isRootAdmin = target?.email === INITIAL_ADMIN_EMAIL;
+      const finalRole = isRootAdmin ? 'Administrador' : rol;
+
+      try {
+        await updateDoc(doc(state.firebase.db, 'usuarios', uid), {
+          nombre,
+          telefono,
+          rol: finalRole
+        });
+        if (target) {
+          target.nombre = nombre;
+          target.telefono = telefono;
+          target.rol = finalRole;
+        }
+        renderAdvisorsTable();
+        closeModal('modal-edit-advisor');
+        showToast(`Datos de ${nombre} actualizados.`, 'success');
+      } catch (err) {
+        console.error('Error actualizando asesor:', err);
+        showToast('No se pudieron guardar los cambios del asesor.', 'error');
+      }
+    };
+
+ 
+
+    window.requestDeleteAdvisor = function (uid, nombre) {
+      if (state.currentUser?.role !== 'Administrador') return;
+      const target = state.advisors.find((a) => a.uid === uid);
+      if (!target || target.email === INITIAL_ADMIN_EMAIL) return;
+
+      openConfirmModal(
+        'Eliminar Cuenta de Asesor',
+        `¿Está seguro de eliminar el perfil de ${nombre} (${target.email})? El usuario perderá el acceso al sistema inmediatamente, pero se conservarán sus atenciones históricas en reportes.`,
+        async () => {
+          try {
+            await deleteDoc(doc(state.firebase.db, 'usuarios', uid));
+            state.advisors = state.advisors.filter((a) => a.uid !== uid);
+            renderAdvisorsTable();
+            showToast(`Cuenta de ${nombre} eliminada del sistema.`, 'info');
+          } catch (err) {
+            console.error('Error eliminando asesor:', err);
+            showToast('No se pudo eliminar la cuenta en Firestore.', 'error');
+          }
+        }
+      );
+    };
+
+    window.changeAdvisorRole = async function (uid, newRole) {
+      if (state.currentUser?.role !== 'Administrador') return;
+      if (!['Asesor', 'Asesor Especial', 'Administrador'].includes(newRole)) return;
+      try {
+        await updateDoc(doc(state.firebase.db, 'usuarios', uid), { rol: newRole });
+        const target = state.advisors.find((a) => a.uid === uid);
+        if (target) target.rol = newRole;
+        renderAdvisorsTable();
+        showToast(`Rol actualizado a "${newRole}".`, 'success');
+      } catch (err) {
+        console.error('Error cambiando rol:', err);
+        showToast('No se pudo actualizar el rol en Firestore.', 'error');
+        loadAdvisorsList();
+      }
+    };
+
+    window.toggleAdvisorActiveStatus = async function (uid, nextActive) {
+      if (state.currentUser?.role !== 'Administrador') return;
+      try {
+        await updateDoc(doc(state.firebase.db, 'usuarios', uid), { activo: nextActive });
+        const target = state.advisors.find((a) => a.uid === uid);
+        if (target) target.activo = nextActive;
+        renderAdvisorsTable();
+        showToast(nextActive ? 'Cuenta de asesor reactivada.' : 'Cuenta de asesor desactivada.', 'info');
+      } catch (err) {
+        console.error('Error cambiando estado del asesor:', err);
+        showToast('No se pudo cambiar el estado del asesor.', 'error');
+      }
+    };
+
+    window.handleCreateAdvisor = async function (e) {
+      e.preventDefault();
+      if (state.currentUser?.role !== 'Administrador') return;
+
+      const nombre = document.getElementById('new-adv-nombre').value.trim();
+      const telefono = document.getElementById('new-adv-telefono').value.trim();
+      const email = document.getElementById('new-adv-email').value.trim().toLowerCase();
+      const password = document.getElementById('new-adv-password').value;
+      const rol = document.getElementById('new-adv-rol').value;
+
+      if (!nombre || !telefono || !email || password.length < 6) {
+        showToast('Complete todos los campos (contraseña mínimo 6 caracteres).', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('btn-create-advisor');
+      btn.disabled = true;
+      btn.textContent = 'Creando cuenta...';
+
+      // Usamos una instancia secundaria de Firebase App para crear el usuario sin cerrar la sesión del Admin
+      const secondaryAppName = `sae-create-user-${Date.now()}`;
+      let secondaryApp = null;
+      try {
+        secondaryApp = initializeApp(FIREBASE_CONFIG, secondaryAppName);
+        const secondaryAuth = getAuth(secondaryApp);
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+        const newUid = cred.user.uid;
+        await signOut(secondaryAuth);
+
+        await setDoc(doc(state.firebase.db, 'usuarios', newUid), {
+          nombre,
+          telefono,
+          email,
+          rol,
+          activo: true,
+          creadoEn: serverTimestamp()
+        });
+
+        document.getElementById('create-advisor-form').reset();
+        await loadAdvisorsList();
+        showToast(`Asesor ${nombre} (${rol}) creado correctamente.`, 'success');
+      } catch (err) {
+        console.error('Error creando asesor:', err);
+        const msg = err?.code === 'auth/email-already-in-use'
+          ? 'Ese correo ya está registrado en Firebase Authentication.'
+          : `No se pudo crear el asesor (${err?.code || 'error-desconocido'}).`;
+        showToast(msg, 'error');
+      } finally {
+        if (secondaryApp) {
+          await deleteApp(secondaryApp).catch(() => {});
+        }
+        btn.disabled = false;
+        btn.textContent = '+ Crear Cuenta y Perfil SAE';
+      }
+    };
 
     // =========================================================================
     // 13. MODALES, UTILIDADES DE FECHA Y NOTIFICACIONES TOAST
