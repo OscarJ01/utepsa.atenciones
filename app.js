@@ -440,10 +440,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     );
   }
 
-    function createAdvisorAttendanceSummaryData(studentCode, record) {
+ function createAdvisorAttendanceSummaryData(studentCode, record) {
       return {
         registro: studentCode,
         asesor: record.asesor,
+        canalAtencion: record.canalAtencion === 'wati' ? 'wati' : 'plataforma',
         fecha: record.fecha,
         tramites: record.tramites || {},
         observaciones: record.observaciones || 'INFORMACION',
@@ -900,13 +901,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
     const promise = getDoc(getAdvisorLatestAttendanceSummaryRef(studentCode, cleanMonth))
       .then((snapshot) => {
-        const data = !snapshot.exists()
+     const data = !snapshot.exists()
           ? { found: false }
           : {
               found: true,
               recordId: snapshot.data().recordId || '',
               fecha: snapshot.data().fecha,
               asesor: snapshot.data().asesor,
+              canalAtencion: snapshot.data().canalAtencion || '',
               tramites: snapshot.data().tramites || {},
               observaciones: snapshot.data().observaciones || '',
               createdAtMillis: snapshot.data().createdAtServer?.toMillis?.() ?? null
@@ -923,7 +925,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     return promise;
   }
 
-    function buildDetailedAttendanceCard({ headingText, fecha, createdAtMillis, asesor, tramites, observaciones }) {
+   function buildDetailedAttendanceCard({ headingText, fecha, createdAtMillis, asesor, canalAtencion, tramites, observaciones }) {
       const attendanceTime = formatTimeDisplay(createdAtMillis);
       const attendanceProcedures = PROCEDURES
         .filter((procedure) => tramites?.[procedure.key])
@@ -935,15 +937,29 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const header = document.createElement('div');
       header.className = 'flex flex-wrap items-center justify-between gap-2';
 
+      const headingGroup = document.createElement('div');
+      headingGroup.className = 'flex flex-wrap items-center gap-1.5';
+
       const heading = document.createElement('span');
       heading.className = 'inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-orange-800';
       heading.textContent = headingText;
+      headingGroup.appendChild(heading);
+
+      if (canalAtencion === 'wati' || canalAtencion === 'plataforma') {
+        const isWati = canalAtencion === 'wati';
+        const channelBadge = document.createElement('span');
+        channelBadge.className = isWati
+          ? 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-200'
+          : 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-red-100 text-[#C8102E] border border-red-200';
+        channelBadge.textContent = isWati ? 'WATI' : 'Plataforma';
+        headingGroup.appendChild(channelBadge);
+      }
 
       const dateTime = document.createElement('span');
       dateTime.className = 'text-[11px] font-semibold text-slate-500';
       dateTime.textContent = `${formatDateDisplay(fecha)} · ${attendanceTime}`;
 
-      header.append(heading, dateTime);
+      header.append(headingGroup, dateTime);
       card.appendChild(header);
 
       const advisor = document.createElement('div');
@@ -1026,11 +1042,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
 
         const selectedDate = document.getElementById('entry-fecha').value || getTodayISO();
         const isToday = latest.fecha === selectedDate;
-        const detailedCard = buildDetailedAttendanceCard({
+       const detailedCard = buildDetailedAttendanceCard({
           headingText: 'Última atención en SAE',
           fecha: latest.fecha,
           createdAtMillis: latest.createdAtMillis,
           asesor: latest.asesor,
+          canalAtencion: latest.canalAtencion,
           tramites: latest.tramites,
           observaciones: latest.observaciones
         });
@@ -1113,12 +1130,13 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         `El estudiante ${clean} ya registra ${matches.length} atención(es) en ${formatMonthName(targetMonth)}. Al guardarse se marcará en naranja como re-consulta.`;
 
       const latestAttendance = document.getElementById('repeat-alert-history');
-      latestAttendance.replaceChildren(
+   latestAttendance.replaceChildren(
         buildDetailedAttendanceCard({
           headingText: 'Última atención',
           fecha: latestMatch.fecha,
           createdAtMillis: latestMatch.createdAt,
           asesor: latestMatch.asesor,
+          canalAtencion: latestMatch.canalAtencion,
           tramites: latestMatch.tramites,
           observaciones: latestMatch.observaciones
         })
