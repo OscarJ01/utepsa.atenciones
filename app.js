@@ -899,20 +899,37 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     const cachedLookup = state.latestAttendanceLookup;
     if (cachedLookup.key === cacheKey && cachedLookup.promise) return cachedLookup.promise;
 
-    const promise = getDoc(getAdvisorLatestAttendanceSummaryRef(studentCode, cleanMonth))
-      .then((snapshot) => {
-     const data = !snapshot.exists()
-          ? { found: false }
-          : {
-              found: true,
-              recordId: snapshot.data().recordId || '',
-              fecha: snapshot.data().fecha,
-              asesor: snapshot.data().asesor,
-              canalAtencion: snapshot.data().canalAtencion || '',
-              tramites: snapshot.data().tramites || {},
-              observaciones: snapshot.data().observaciones || '',
-              createdAtMillis: snapshot.data().createdAtServer?.toMillis?.() ?? null
-            };
+  const promise = getDoc(getAdvisorLatestAttendanceSummaryRef(studentCode, cleanMonth))
+      .then(async (snapshot) => {
+        if (!snapshot.exists()) return { found: false };
+
+        const raw = snapshot.data();
+        let canalAtencion = raw.canalAtencion || '';
+
+        // Si el resumen fue guardado antes de añadir canalAtencion, intentar leerlo del registro original (1 lectura puntual)
+        if (!canalAtencion && raw.recordId && state.firebase.db) {
+          try {
+            const origSnap = await getDoc(
+              doc(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones', raw.recordId)
+            );
+            if (origSnap.exists()) {
+              canalAtencion = origSnap.data().canalAtencion || 'plataforma';
+            }
+          } catch (_) {
+            // Si las reglas no permiten leer el doc de otro asesor, continuar sin bloquear la alerta
+          }
+        }
+
+        const data = {
+          found: true,
+          recordId: raw.recordId || '',
+          fecha: raw.fecha,
+          asesor: raw.asesor,
+          canalAtencion,
+          tramites: raw.tramites || {},
+          observaciones: raw.observaciones || '',
+          createdAtMillis: raw.createdAtServer?.toMillis?.() ?? null
+        };
         state.studentSummaryCache.set(cacheKey, { data, cachedAt: Date.now() });
         return data;
       })
@@ -945,15 +962,18 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       heading.textContent = headingText;
       headingGroup.appendChild(heading);
 
-      if (canalAtencion === 'wati' || canalAtencion === 'plataforma') {
-        const isWati = canalAtencion === 'wati';
-        const channelBadge = document.createElement('span');
-        channelBadge.className = isWati
-          ? 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-200'
-          : 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-red-100 text-[#C8102E] border border-red-200';
-        channelBadge.textContent = isWati ? 'WATI' : 'Plataforma';
-        headingGroup.appendChild(channelBadge);
+    const channelBadge = document.createElement('span');
+      if (canalAtencion === 'wati') {
+        channelBadge.className = 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-200';
+        channelBadge.textContent = 'WATI';
+      } else if (canalAtencion === 'plataforma') {
+        channelBadge.className = 'px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-red-100 text-[#C8102E] border border-red-200';
+        channelBadge.textContent = 'Plataforma';
+      } else {
+        channelBadge.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200';
+        channelBadge.textContent = 'Canal previo';
       }
+      headingGroup.appendChild(channelBadge);
 
       const dateTime = document.createElement('span');
       dateTime.className = 'text-[11px] font-semibold text-slate-500';
