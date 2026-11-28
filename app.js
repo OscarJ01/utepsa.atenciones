@@ -1,29 +1,30 @@
 import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-  import {
-      getAuth,
-      signInWithCustomToken,
-      signInWithEmailAndPassword,
-      createUserWithEmailAndPassword,
-      signOut
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import {
-      initializeFirestore,
-      persistentLocalCache,
-      persistentMultipleTabManager,
-      collection,
-      doc,
-      getDoc,
-      setDoc,
-      updateDoc,
-      deleteDoc,
-      getDocs,
-      onSnapshot,
-      query,
-      where,
-      writeBatch,
-      serverTimestamp,
-      Timestamp
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import {
+  getAuth,
+  signInWithCustomToken,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+  limit,
+  writeBatch,
+  serverTimestamp,
+  Timestamp
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // =========================================================================
     // 1. CONSTANTES INSTITUCIONALES Y CATÁLOGO EXACTO DEL EXCEL UTEPSA
@@ -1977,11 +1978,24 @@ return state.records.filter((r) => {
             ? { registro, fecha, mesAnio, canalAtencion, tramites, congelamientoDetalle, observaciones }
             : { canalAtencion, tramites, congelamientoDetalle, observaciones };
           await updateDoc(docRef, updates);
-        } catch (err) {
-          console.error('Error actualizando en Firestore:', err);
-          showToast('Error al actualizar en Firestore.', 'error');
-          return;
-        }
+       } catch (err) {
+  console.error('Error actualizando en Firestore:', err);
+
+  const mensajes = {
+    'permission-denied':
+      'Firestore rechazó la modificación. Verifique que sea su registro y que su rol tenga permiso para editar esos campos.',
+    'not-found':
+      'El registro ya no existe en Firestore. Actualice la página e inténtelo de nuevo.',
+    'unavailable':
+      'No hay conexión con Firestore. Revise internet e inténtelo de nuevo.'
+  };
+
+  showToast(
+    mensajes[err?.code] || `No se pudo guardar: ${err?.message || 'error desconocido'}`,
+    'error'
+  );
+  return;
+}
       } else {
         const idx = state.records.findIndex((r) => r.id === id);
         if (idx !== -1) {
@@ -1994,7 +2008,7 @@ return state.records.filter((r) => {
     };
 
     window.requestDeleteRecord = function (id, registroCode) {
-      if (state.currentUser?.role !== 'Administrador') {
+      if (!state.currentUser || state.currentUser.role !== 'Administrador') {
         showToast('Solo un administrador puede eliminar registros.', 'error');
         return;
       }
@@ -2003,35 +2017,27 @@ return state.records.filter((r) => {
         'Eliminar Registro',
         `¿Está seguro que desea eliminar la atención del estudiante ${registroCode}?`,
         async () => {
-          if (state.firebase.db && state.firebase.auth?.currentUser && !id.startsWith('local_')) {
+          if (state.firebase.db && state.firebase.auth?.currentUser && !String(id).startsWith('local_')) {
             try {
               const docRef = doc(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones', id);
               await deleteDoc(docRef);
+              state.records = state.records.filter((r) => r.id !== id);
+              refreshAllViews();
+              showToast(`Registro ${registroCode} eliminado correctamente.`, 'success');
             } catch (err) {
               console.error('Error eliminando en Firestore:', err);
-              showToast('Error al eliminar en Firestore.', 'error');
-              return;
+              showToast('Error al eliminar en Firestore. Verifique permisos.', 'error');
             }
           } else {
             state.records = state.records.filter((r) => r.id !== id);
             refreshAllViews();
+            showToast(`Registro ${registroCode} eliminado.`, 'info');
           }
-         showToast(`Registro ${registroCode} eliminado.`, 'info');
         }
       );
     };
 
-    window.openStudentTimelineModal = function (studentCode) {
-      if (!studentCode) return;
-      const studentRecords = state.records
-        .filter((r) => r.registro === studentCode)
-        .sort((a, b) => {
-          if (b.fecha !== a.fecha) return b.fecha.localeCompare(a.fecha);
-          return (b.createdAt || 0) - (a.createdAt || 0);
-        });
-
-      document.getElementById('timeline-modal-title').textContent = `Estudiante: ${studentCode}`;
-
+    function renderStudentTimelineCards(studentCode, studentRecords) {
       const totalProcedures = studentRecords.reduce(
         (acc, r) => acc + PROCEDURES.filter((p) => r.tramites?.[p.key]).length,
         0
@@ -2040,43 +2046,91 @@ return state.records.filter((r) => {
       const platVisits = studentRecords.length - watiVisits;
 
       document.getElementById('timeline-modal-summary').innerHTML = `
-        <span>${studentRecords.length} atención(es) en historial cargado · ${totalProcedures} trámite(s)</span>
+        <span>${studentRecords.length} atención(es) en historial SAE · ${totalProcedures} trámite(s)</span>
         <span class="text-slate-500">${platVisits} Plataforma · ${watiVisits} WATI</span>
       `;
 
       const body = document.getElementById('timeline-modal-body');
       if (studentRecords.length === 0) {
-        body.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">No se encontraron atenciones cargadas para este estudiante.</p>`;
-      } else {
-        body.innerHTML = studentRecords.map((rec, idx) => {
-          const activeProcs = PROCEDURES.filter((p) => rec.tramites?.[p.key]).map((p) => p.label);
-          const isWati = rec.canalAtencion === 'wati';
-          return `
-            <div class="p-4 rounded-2xl border ${idx === 0 ? 'border-orange-300 bg-orange-50/40' : 'border-slate-200 bg-white'} space-y-2">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-black text-slate-800">${escapeHtml(formatDateDisplay(rec.fecha))} · ${formatTimeDisplay(rec.createdAt)}</span>
-                  ${idx === 0 ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-200 text-orange-900">Más reciente</span>' : ''}
-                </div>
-                <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
-                  isWati ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-[#C8102E]'
-                }">${isWati ? 'WATI' : 'Plataforma'}</span>
-              </div>
-              <p class="text-xs text-slate-600"><span class="font-bold text-slate-700">Asesor:</span> ${escapeHtml(rec.asesor || '-')}</p>
-              <div class="flex flex-wrap gap-1.5">
-                ${activeProcs.map((lbl) => `
-                  <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-100">X ${lbl}</span>
-                `).join('')}
-              </div>
-              <p class="text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-                <span class="font-bold text-slate-700">Obs:</span> ${escapeHtml(rec.observaciones || '-')}
-              </p>
-            </div>
-          `;
-        }).join('');
+        body.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">No se encontraron atenciones para este estudiante.</p>`;
+        return;
       }
 
-    document.getElementById('modal-student-timeline').classList.remove('hidden');
+      body.innerHTML = studentRecords.map((rec, idx) => {
+        const activeProcs = PROCEDURES.filter((p) => rec.tramites?.[p.key]).map((p) => p.label);
+        const isWati = rec.canalAtencion === 'wati';
+        const isOwn = rec.asesorUid
+          ? rec.asesorUid === state.currentUser?.uid
+          : rec.asesor === state.currentUser?.name;
+
+        return `
+          <div class="p-4 rounded-2xl border ${idx === 0 ? 'border-orange-300 bg-orange-50/40' : 'border-slate-200 bg-white'} space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-black text-slate-800">${escapeHtml(formatDateDisplay(rec.fecha))} · ${formatTimeDisplay(rec.createdAt)}</span>
+                ${idx === 0 ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-orange-200 text-orange-900">Más reciente</span>' : ''}
+                ${isOwn
+                  ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">Tu atención</span>'
+                  : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">Otro asesor</span>'}
+              </div>
+              <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                isWati ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-[#C8102E]'
+              }">${isWati ? 'WATI' : 'Plataforma'}</span>
+            </div>
+            <p class="text-xs text-slate-600"><span class="font-bold text-slate-700">Asesor:</span> <span class="font-extrabold ${isOwn ? 'text-slate-800' : 'text-[#C8102E]'}">${escapeHtml(rec.asesor || '-')}</span></p>
+            <div class="flex flex-wrap gap-1.5">
+              ${activeProcs.map((lbl) => `
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-100">X ${lbl}</span>
+              `).join('')}
+            </div>
+            <p class="text-xs text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+              <span class="font-bold text-slate-700">Obs:</span> ${escapeHtml(rec.observaciones || '-')}
+            </p>
+          </div>
+        `;
+      }).join('');
+    }
+
+   window.openStudentTimelineModal = async function (studentCode) {
+      if (!studentCode) return;
+
+      const sortRecords = (list) => list.sort((a, b) => {
+        if (b.fecha !== a.fecha) return b.fecha.localeCompare(a.fecha);
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+
+      const timelineMap = new Map();
+
+      // 1. Cargar las atenciones locales disponibles
+      state.records
+        .filter((r) => String(r.registro).trim() === String(studentCode).trim())
+        .forEach((r) => timelineMap.set(r.id, r));
+
+      document.getElementById('timeline-modal-title').textContent = `Estudiante: ${studentCode}`;
+      renderStudentTimelineCards(studentCode, sortRecords(Array.from(timelineMap.values())));
+      document.getElementById('modal-student-timeline').classList.remove('hidden');
+
+      // 2. Consultar directamente en Firestore todas las atenciones globales de este estudiante
+      if (state.firebase.db && state.firebase.auth?.currentUser) {
+        try {
+          const recordsRef = collection(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones');
+          const q = query(recordsRef, where('registro', '==', String(studentCode).trim()), limit(50));
+          const snap = await getDocs(q);
+
+          snap.forEach((docSnap) => {
+            if (!timelineMap.has(docSnap.id)) {
+              timelineMap.set(docSnap.id, mapFirestoreRecord(docSnap));
+            }
+          });
+
+          // Refrescar el modal con el consolidado total de todos los asesores
+          if (document.getElementById('timeline-modal-title').textContent === `Estudiante: ${studentCode}`) {
+            renderStudentTimelineCards(studentCode, sortRecords(Array.from(timelineMap.values())));
+          }
+        } catch (err) {
+          console.error('Error al sincronizar el expediente global del estudiante:', err);
+        }
+      }
     };
 
   window.promptLoadFullMonth = function (monthStr, isManual = false) {
@@ -2137,7 +2191,7 @@ return state.records.filter((r) => {
     // =========================================================================
     // 10. DASHBOARD DE REPORTE MENSUAL, KPIs Y GRÁFICOS (Chart.js)
     // =========================================================================
-   function getFilteredReportRecords(advisorFilter, channelFilter = state.reportChannelFilter) {
+  function getFilteredReportRecords(advisorFilter, channelFilter = state.reportChannelFilter) {
       const selectedMonth = document.getElementById('report-month-select').value || getTodayISO().slice(0, 7);
       const selectedAdvisor = advisorFilter
         || document.getElementById('report-advisor-select').value
@@ -2145,14 +2199,33 @@ return state.records.filter((r) => {
       const selectedChannel = channelFilter || 'ALL';
       const dateRange = getDateRangeFilter('report');
 
-     return state.records.filter((record) => {
+      return state.records.filter((record) => {
         if (!isDateInRange(record.fecha || '', dateRange)) return false;
         if (!dateRange.hasRange && record.mesAnio !== selectedMonth) return false;
-        if (isAdvisorRole()) {
-          if (record.asesorUid ? record.asesorUid !== state.currentUser?.uid : record.asesor !== state.currentUser?.name) return false;
-        } else if (selectedAdvisor !== 'ALL' && record.asesor !== selectedAdvisor) {
-          return false;
+
+        // Si es administrador o supervisor, ve todo. Si es asesor, por defecto ve lo suyo, 
+        // pero permite consolidar si el filtro global está activo.
+        if (advisorFilter !== 'ALL' && selectedAdvisor !== 'ALL') {
+          const recAsesor = (record.asesor || '').trim().toLowerCase();
+          const targetAdv = selectedAdvisor.trim().toLowerCase();
+          const matchesName = recAsesor === targetAdv || recAsesor.includes(targetAdv) || targetAdv.includes(recAsesor);
+          const matchesUid = record.asesorUid && record.asesorUid === selectedAdvisor;
+          if (!matchesName && !matchesUid) return false;
+        } else if (isAdvisorRole() && advisorFilter === 'ALL' && selectedAdvisor === 'ALL') {
+          const currentUid = state.currentUser?.uid;
+          const currentName = (state.currentUser?.name || '').trim().toLowerCase();
+          const recUid = record.asesorUid || '';
+          const recAsesor = (record.asesor || '').trim().toLowerCase();
+
+          const matchesUid = currentUid && recUid && recUid === currentUid;
+          const matchesName = currentName && recAsesor && (
+            recAsesor === currentName || 
+            currentName.includes(recAsesor) || 
+            recAsesor.includes(currentName)
+          );
+          if (!matchesUid && !matchesName) return false;
         }
+
         if (selectedChannel !== 'ALL' && record.canalAtencion !== selectedChannel) return false;
         return true;
       });
@@ -2321,7 +2394,7 @@ return state.records.filter((r) => {
       const advisorAllChannelsRecords = getFilteredReportRecords(selectedAdvisor, 'ALL');
       const filteredRecords = getFilteredReportRecords(selectedAdvisor, selectedChannel);
 
-      // Cálculo de Atendidos Hoy según rol y filtro de asesor seleccionado
+      // Cálculo de Atendidos Hoy respetando el filtro de asesor seleccionado
       const todayISO = getTodayISO();
       const isAdminUser = state.currentUser?.role === 'Administrador';
       const todayAllChannelRecords = state.records.filter(
@@ -2347,7 +2420,7 @@ return state.records.filter((r) => {
           todayBreakEl.textContent = `Tuyas: ${ownTodayCount} · Equipo: ${teamTodayCount}`;
         } else if (isAdminUser && selectedAdvisor !== 'ALL') {
           const advisorTodayCount = todayAllChannelRecords.filter(
-            (r) => r.asesor === selectedAdvisor
+            (r) => r.asesor === selectedAdvisor || r.asesorUid === selectedAdvisor
           ).length;
 
           todayLabelEl.textContent = 'Atendidos Hoy';
@@ -2356,8 +2429,10 @@ return state.records.filter((r) => {
           todayCountEl.textContent = advisorTodayCount.toLocaleString('es-BO');
           todayBreakEl.textContent = `${selectedAdvisor} · ${formatDateDisplay(todayISO)}`;
         } else {
+          const targetName = state.currentUser?.name || '';
+          const targetUid = state.currentUser?.uid || '';
           const myTodayRecords = todayAllChannelRecords.filter(
-            (r) => r.asesorUid === state.currentUser?.uid || r.asesor === state.currentUser?.name
+            (r) => r.asesorUid === targetUid || r.asesor === targetName
           );
           todayLabelEl.textContent = 'Total Atendidos Hoy';
           todayScopeEl.textContent = 'Mis atenciones';
@@ -2837,22 +2912,28 @@ return state.records.filter((r) => {
     }
 
     function renderAdvisorsChart(periodRecords) {
-      const ctx = document.getElementById('chart-advisors').getContext('2d');
+      const canvas = document.getElementById('chart-advisors');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
       if (state.charts.advisors) state.charts.advisors.destroy();
       const isWati = state.reportChannelFilter === 'wati';
 
+      const sourceRecords = (!periodRecords || periodRecords.length === 0) ? state.records : periodRecords;
+
       const advMap = new Map();
-      periodRecords.forEach((r) => {
-        advMap.set(r.asesor, (advMap.get(r.asesor) || 0) + 1);
+      sourceRecords.forEach((r) => {
+        let rawName = (r.asesor || 'Sin asignar').trim();
+        if (!rawName || rawName === 'undefined') rawName = 'Sin asignar';
+        advMap.set(rawName, (advMap.get(rawName) || 0) + 1);
       });
 
       const sortedAdvisors = Array.from(advMap.entries()).sort((a, b) => b[1] - a[1]);
-      const totalPeriod = periodRecords.length;
+      const totalPeriod = sourceRecords.length;
 
       const summaryContainer = document.getElementById('advisors-percentage-summary');
       if (summaryContainer) {
         if (sortedAdvisors.length === 0) {
-          summaryContainer.innerHTML = '';
+          summaryContainer.innerHTML = '<span class="text-xs text-slate-400">No hay atenciones en este periodo</span>';
         } else {
           summaryContainer.innerHTML = sortedAdvisors.map(([name, count], idx) => {
             const pct = totalPeriod > 0 ? ((count / totalPeriod) * 100).toFixed(1) : '0.0';
@@ -2914,7 +2995,7 @@ return state.records.filter((r) => {
           }
         }
       });
-    } 
+    }
 
     function renderHourlyChart(recordsList) {
       const canvas = document.getElementById('chart-hourly');
@@ -2922,6 +3003,8 @@ return state.records.filter((r) => {
       const ctx = canvas.getContext('2d');
       if (state.charts.hourly) state.charts.hourly.destroy();
       const isWati = state.reportChannelFilter === 'wati';
+
+      const sourceRecords = (!recordsList || recordsList.length === 0) ? state.records : recordsList;
 
       const hourFormatter = new Intl.DateTimeFormat('en-GB', {
         timeZone: 'America/La_Paz',
@@ -2934,7 +3017,7 @@ return state.records.filter((r) => {
         hourCounts.set(h, 0);
       }
 
-      recordsList.forEach((r) => {
+      sourceRecords.forEach((r) => {
         if (!Number.isFinite(r.createdAt) || r.createdAt <= 0) return;
         const h = parseInt(hourFormatter.format(new Date(r.createdAt)), 10);
         if (!Number.isNaN(h)) {
@@ -3212,9 +3295,24 @@ return state.records.filter((r) => {
       showToast(`Archivo CSV exportado (${rows.length} registros).`, 'success');
     };
 
-    window.printExecutiveReport = function () {
-      window.print();
-    };
+  window.printExecutiveReport = async function () {
+  try {
+    await window.renderMonthlyReport();
+
+    // Espera a que el navegador termine de actualizar el reporte y sus gráficos.
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+
+    window.print();
+  } catch (err) {
+    console.error('Error generando el reporte mensual:', err);
+    showToast(
+      `No se pudo generar el reporte: ${err?.message || 'error desconocido'}`,
+      'error'
+    );
+  }
+};
 
     function triggerDownload(blob, filename) {
       const url = URL.createObjectURL(blob);
