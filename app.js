@@ -155,6 +155,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       latestAttendanceRequestId: 0,
       loadedMonths: new Set(),
       loadingMonths: new Set(),
+      dismissedMonthPrompts: new Set(),
       studentSummaryCache: new Map(),
       studentLookupTimer: null,
       activeDateISO: getTodayISO(),
@@ -665,9 +666,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           state.channelAtencion = 'plataforma';
           state.reportChannelFilter = 'ALL';
           updateChannelModeUI();
-         state.records = [];
+        state.records = [];
          state.loadedMonths.clear();
           state.loadingMonths.clear();
+          state.dismissedMonthPrompts.clear();
           state.studentSummaryCache.clear();
           clearTimeout(state.studentLookupTimer);
           if (state.dateWatcherInterval) {
@@ -696,8 +698,10 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         const mobBtn = document.getElementById(`mob-tab-${t}`);
         if (!viewEl || !navBtn || !mobBtn) return;
 
-        if (t === tabName) {
-          viewEl.classList.remove('hidden');
+      if (t === tabName) {
+          viewEl.classList.remove('hidden', 'animate-fade-in');
+          void viewEl.offsetWidth; // Reinicia la animación CSS con fluidez
+          viewEl.classList.add('animate-fade-in');
           navBtn.classList.remove('text-slate-600', 'hover:text-slate-900');
           navBtn.classList.add('bg-[#C8102E]', 'text-white', 'shadow-sm');
           mobBtn.classList.remove('text-slate-600');
@@ -1439,7 +1443,25 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           : 'px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition';
       }
     }
-
+function animateCounter(el, targetValue) {
+      if (!el) return;
+      const target = Number(targetValue) || 0;
+      const current = parseInt(String(el.textContent).replace(/\D/g, ''), 10) || 0;
+      if (current === target || Math.abs(target - current) > 3000) {
+        el.textContent = target.toLocaleString('es-BO');
+        return;
+      }
+      const duration = 260;
+      const start = performance.now();
+      function step(now) {
+        const progress = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const val = Math.round(current + (target - current) * eased);
+        el.textContent = val.toLocaleString('es-BO');
+        if (progress < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
     function renderTodayFeed() {
       const todayISO = document.getElementById('entry-fecha').value || getTodayISO();
       const currentMonth = todayISO.slice(0, 7);
@@ -1449,9 +1471,11 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const canDeleteRecords = state.currentUser?.role === 'Administrador';
 
       const displayRecords = state.records.filter(
-        (r) => isSupervisor || (isAdmin
-          ? r.asesorUid === state.currentUser?.uid
-          : r.asesor === advisorName)
+        (r) => isSupervisor || (
+          r.asesorUid
+            ? r.asesorUid === state.currentUser?.uid
+            : r.asesor === advisorName
+        )
       );
       const monthCounts = getStudentMonthCounts(displayRecords);
       const todayRecords = displayRecords.filter((r) => r.fecha === todayISO);
@@ -1540,9 +1564,9 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         bindRecordActionHandlers(container);
       }
 
-      // Actualizar tarjetas superiores de Registro Rápido (Meta Diaria = 250)
+     // Actualizar tarjetas superiores de Registro Rápido (Meta Diaria = 150)
       const advisorMonthRecords = displayRecords.filter((r) => r.mesAnio === currentMonth);
-      const dailyGoalTarget = 250;
+      const dailyGoalTarget = 150;
       const dailyPct = Math.min(100, Math.round((todayRecords.length / dailyGoalTarget) * 100));
 
       let repeatRowsCount = 0;
@@ -1550,14 +1574,12 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         if ((monthCounts.get(`${r.mesAnio}|${r.registro}`) || 0) > 1) repeatRowsCount++;
       });
 
-      document.getElementById('quick-stat-today').textContent = todayRecords.length.toLocaleString('es-BO');
-      const dailyCountEl = document.getElementById('quick-stat-daily-count');
+      animateCounter(document.getElementById('quick-stat-today'), todayRecords.length);
       const dailyPctEl = document.getElementById('quick-stat-daily-pct');
       const dailyBarEl = document.getElementById('quick-stat-daily-bar');
-      if (dailyCountEl) dailyCountEl.textContent = todayRecords.length.toLocaleString('es-BO');
       if (dailyPctEl) dailyPctEl.textContent = `${dailyPct}%`;
       if (dailyBarEl) dailyBarEl.style.width = `${dailyPct}%`;
-      document.getElementById('quick-stat-repeats').textContent = repeatRowsCount.toLocaleString('es-BO');
+      animateCounter(document.getElementById('quick-stat-repeats'), repeatRowsCount);
     }
 
     // =========================================================================
@@ -1589,11 +1611,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const dateRange = getDateRangeFilter('hist');
 
       const monthCounts = getStudentMonthCounts(state.records);
-
-      return state.records.filter((r) => {
+return state.records.filter((r) => {
         if (!isDateInRange(r.fecha || '', dateRange)) return false;
         if (!dateRange.hasRange && monthFilter !== 'ALL' && r.mesAnio !== monthFilter) return false;
-        if (advisorFilter !== 'ALL' && r.asesor !== advisorFilter) return false;
+        if (isAdvisorRole()) {
+          if (r.asesorUid ? r.asesorUid !== state.currentUser?.uid : r.asesor !== state.currentUser?.name) return false;
+        } else if (advisorFilter !== 'ALL' && r.asesor !== advisorFilter) {
+          return false;
+        }
         if (channelFilter !== 'ALL' && r.canalAtencion !== channelFilter) return false;
         if (procFilter !== 'ALL' && !r.tramites?.[procFilter]) return false;
         if (onlyRepeats && (monthCounts.get(`${r.mesAnio}|${r.registro}`) || 0) <= 1) return false;
@@ -2054,9 +2079,13 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
     document.getElementById('modal-student-timeline').classList.remove('hidden');
     };
 
-    window.promptLoadFullMonth = function (monthStr) {
+  window.promptLoadFullMonth = function (monthStr, isManual = false) {
       const targetMonth = monthStr || getTodayISO().slice(0, 7);
       if (state.loadedMonths.has(targetMonth)) return;
+      if (!isManual && state.dismissedMonthPrompts.has(targetMonth)) return;
+
+      // Marcar como recordado para que si pulsa Cancelar o X no vuelva a molestar al cambiar de pestaña
+      state.dismissedMonthPrompts.add(targetMonth);
 
       openConfirmModal(
         'Cargar Historial y Reporte del Mes',
@@ -2116,10 +2145,14 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const selectedChannel = channelFilter || 'ALL';
       const dateRange = getDateRangeFilter('report');
 
-      return state.records.filter((record) => {
+     return state.records.filter((record) => {
         if (!isDateInRange(record.fecha || '', dateRange)) return false;
         if (!dateRange.hasRange && record.mesAnio !== selectedMonth) return false;
-        if (selectedAdvisor !== 'ALL' && record.asesor !== selectedAdvisor) return false;
+        if (isAdvisorRole()) {
+          if (record.asesorUid ? record.asesorUid !== state.currentUser?.uid : record.asesor !== state.currentUser?.name) return false;
+        } else if (selectedAdvisor !== 'ALL' && record.asesor !== selectedAdvisor) {
+          return false;
+        }
         if (selectedChannel !== 'ALL' && record.canalAtencion !== selectedChannel) return false;
         return true;
       });
@@ -2284,9 +2317,55 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
       const selectedChannel = state.reportChannelFilter || 'ALL';
       const dateRange = getDateRangeFilter('report');
 
-      const periodAllRecords = getFilteredReportRecords('ALL', selectedChannel);
+     const periodAllRecords = getFilteredReportRecords('ALL', selectedChannel);
       const advisorAllChannelsRecords = getFilteredReportRecords(selectedAdvisor, 'ALL');
       const filteredRecords = getFilteredReportRecords(selectedAdvisor, selectedChannel);
+
+      // Cálculo de Atendidos Hoy según rol y filtro de asesor seleccionado
+      const todayISO = getTodayISO();
+      const isAdminUser = state.currentUser?.role === 'Administrador';
+      const todayAllChannelRecords = state.records.filter(
+        (r) => r.fecha === todayISO && (selectedChannel === 'ALL' || r.canalAtencion === selectedChannel)
+      );
+
+      const todayLabelEl = document.getElementById('kpi-today-label');
+      const todayScopeEl = document.getElementById('kpi-today-scope-badge');
+      const todayCountEl = document.getElementById('kpi-today-attentions');
+      const todayBreakEl = document.getElementById('kpi-today-breakdown');
+
+      if (todayCountEl && todayLabelEl && todayScopeEl && todayBreakEl) {
+        if (isAdminUser && selectedAdvisor === 'ALL') {
+          const ownTodayCount = todayAllChannelRecords.filter(
+            (r) => r.asesorUid === state.currentUser?.uid || r.asesor === state.currentUser?.name
+          ).length;
+          const teamTodayCount = Math.max(0, todayAllChannelRecords.length - ownTodayCount);
+
+          todayLabelEl.textContent = 'Atendidos Hoy (General)';
+          todayScopeEl.textContent = 'Global SAE';
+          todayScopeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E]';
+          todayCountEl.textContent = todayAllChannelRecords.length.toLocaleString('es-BO');
+          todayBreakEl.textContent = `Tuyas: ${ownTodayCount} · Equipo: ${teamTodayCount}`;
+        } else if (isAdminUser && selectedAdvisor !== 'ALL') {
+          const advisorTodayCount = todayAllChannelRecords.filter(
+            (r) => r.asesor === selectedAdvisor
+          ).length;
+
+          todayLabelEl.textContent = 'Atendidos Hoy';
+          todayScopeEl.textContent = 'Por asesor';
+          todayScopeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700';
+          todayCountEl.textContent = advisorTodayCount.toLocaleString('es-BO');
+          todayBreakEl.textContent = `${selectedAdvisor} · ${formatDateDisplay(todayISO)}`;
+        } else {
+          const myTodayRecords = todayAllChannelRecords.filter(
+            (r) => r.asesorUid === state.currentUser?.uid || r.asesor === state.currentUser?.name
+          );
+          todayLabelEl.textContent = 'Total Atendidos Hoy';
+          todayScopeEl.textContent = 'Mis atenciones';
+          todayScopeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700';
+          todayCountEl.textContent = myTodayRecords.length.toLocaleString('es-BO');
+          todayBreakEl.textContent = `${formatDateDisplay(todayISO)} · Solo tus registros`;
+        }
+      }
 
       const totalAttentions = filteredRecords.length;
       const totalChannelBase = advisorAllChannelsRecords.length;
@@ -3410,14 +3489,38 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
           telefono,
           rol: finalRole
         });
+
+        // Actualizar también el nombre en sus atenciones históricas en Firestore
+        const recordsRef = collection(state.firebase.db, 'artifacts', appId, 'public', 'data', 'atenciones');
+        const userRecsSnap = await getDocs(query(recordsRef, where('asesorUid', '==', uid)));
+        const docsToUpdate = userRecsSnap.docs.filter((d) => (d.data().asesor || '').trim() !== nombre);
+
+        for (let i = 0; i < docsToUpdate.length; i += 450) {
+          const batch = writeBatch(state.firebase.db);
+          docsToUpdate.slice(i, i + 450).forEach((d) => {
+            batch.update(d.ref, { asesor: nombre });
+          });
+          await batch.commit();
+        }
+
+        state.records = state.records.map((r) =>
+          r.asesorUid === uid ? { ...r, asesor: nombre } : r
+        );
+
         if (target) {
           target.nombre = nombre;
           target.telefono = telefono;
           target.rol = finalRole;
         }
         renderAdvisorsTable();
+        refreshAllViews();
         closeModal('modal-edit-advisor');
-        showToast(`Datos de ${nombre} actualizados.`, 'success');
+        showToast(
+          docsToUpdate.length > 0
+            ? `Datos de ${nombre} y ${docsToUpdate.length} registro(s) históricos actualizados.`
+            : `Datos de ${nombre} actualizados.`,
+          'success'
+        );
       } catch (err) {
         console.error('Error actualizando asesor:', err);
         showToast('No se pudieron guardar los cambios del asesor.', 'error');
@@ -3562,7 +3665,7 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         info: 'bg-slate-800 text-white'
       };
       const el = document.createElement('div');
-      el.className = `pointer-events-auto px-4 py-3 rounded-2xl shadow-lg text-xs font-bold flex items-center justify-between gap-3 animate-fade-in ${colors[type] || colors.info}`;
+      el.className = `pointer-events-auto px-4 py-3.5 rounded-2xl shadow-xl backdrop-blur-md text-xs font-bold flex items-center justify-between gap-3 animate-toast-in ${colors[type] || colors.info}`;
       const messageEl = document.createElement('span');
       messageEl.textContent = message;
       const dismissButton = document.createElement('button');
@@ -3657,7 +3760,8 @@ import { initializeApp, deleteApp, getApps } from "https://www.gstatic.com/fireb
         const wasHistOnPrevMonth = histMonth?.value === previousMonth;
         const wasRepOnPrevMonth = repMonth?.value === previousMonth;
 
-        state.loadedMonths.clear();
+       state.loadedMonths.clear();
+        state.dismissedMonthPrompts.clear();
         state.records = state.records.filter((r) => r.mesAnio === currentMonth);
 
         populateDynamicFilters();

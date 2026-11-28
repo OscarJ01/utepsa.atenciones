@@ -274,45 +274,40 @@
       <!-- ================================================================= -->
       <section id="view-registro" class="space-y-6 animate-fade-in">
         
-        <!-- Barra Superior de Progreso Diario y Mensual del Asesor -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col justify-between">
-            <div class="flex items-start justify-between">
-              <div>
-                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Atendidos Hoy</p>
-                <p id="quick-stat-today" class="text-2xl font-black text-slate-800 mt-0.5">0</p>
-                <p id="quick-stat-today-date" class="text-[11px] text-slate-400 mt-0.5">Fecha actual</p>
+        <!-- Barra Superior de Progreso Diario y Control del Asesor -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Atendidos Hoy</p>
+                  <span id="quick-stat-today-date" class="text-[11px] font-semibold text-slate-400">· Fecha actual</span>
+                </div>
+                <span id="quick-stat-daily-pct" class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-[#FDF2F4] text-[#C8102E]">0%</span>
               </div>
-              <div class="w-10 h-10 rounded-2xl bg-[#FDF2F4] text-[#C8102E] flex items-center justify-center shrink-0">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              </div>
-            </div>
-            <div class="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-100">
-              <button type="button" id="today-filter-btn-ALL" onclick="setTodayFeedChannelFilter('ALL')" class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-800 text-white transition">
-                Todos: <span id="today-count-all">0</span>
-              </button>
-              <button type="button" id="today-filter-btn-plataforma" onclick="setTodayFeedChannelFilter('plataforma')" class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-200 hover:bg-red-100 transition">
-                ● Plat: <span id="today-count-plat">0</span>
-              </button>
-              <button type="button" id="today-filter-btn-wati" onclick="setTodayFeedChannelFilter('wati')" class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition">
-                ● WATI: <span id="today-count-wati">0</span>
-              </button>
-            </div>
-          </div>
 
-         <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm">
-            <div class="flex items-center justify-between mb-1">
-              <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Meta Diaria Asesor</p>
-              <span id="quick-stat-daily-pct" class="text-xs font-extrabold text-[#C8102E]">0%</span>
+              <div class="flex items-baseline gap-2 mt-1">
+                <p id="quick-stat-today" class="text-2xl font-black text-slate-800">0</p>
+                <span class="text-xs text-slate-400 font-semibold">/ 150 meta diaria</span>
+              </div>
+
+              <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2">
+                <div id="quick-stat-daily-bar" class="h-full bg-[#C8102E] rounded-full transition-all duration-500" style="width: 0%"></div>
+              </div>
             </div>
-            <div class="flex items-baseline gap-2">
-              <p id="quick-stat-daily-count" class="text-2xl font-black text-slate-800">0</p>
-              <span class="text-xs text-slate-400 font-medium">/ 250 meta diaria</span>
-            </div>
-            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2">
-              <div id="quick-stat-daily-bar" class="h-full bg-[#C8102E] rounded-full transition-all duration-500" style="width: 0%"></div>
-            </div>
-          </div>
+
+           <div class="flex flex-wrap items-center gap-1.5 mt-3 pt-2.5 border-t border-slate-100">
+           <button type="button" id="today-filter-btn-ALL" onclick="setTodayFeedChannelFilter('ALL')" class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-slate-800 text-white transition">
+             Todos: <span id="today-count-all">0</span>
+           </button>
+           <button type="button" id="today-filter-btn-plataforma" onclick="setTodayFeedChannelFilter('plataforma')" class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-[#FDF2F4] text-[#C8102E] border border-red-200 hover:bg-red-100 transition">
+             Plat: <span id="today-count-plat">0</span>
+           </button>
+           <button type="button" id="today-filter-btn-wati" onclick="setTodayFeedChannelFilter('wati')" class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition">
+             WATI: <span id="today-count-wati">0</span>
+           </button>
+         </div>
+       </div>
 
           <div class="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex items-center justify-between">
             <div>
@@ -539,9 +534,9 @@
             <span class="px-2 py-0.5 rounded-md bg-amber-200/80 font-extrabold uppercase text-[10px]">Modo Ahorro</span>
             <span>Mostrando únicamente las atenciones de <strong>hoy</strong>.</span>
           </div>
-          <button type="button" onclick="promptLoadFullMonth()" class="px-3.5 py-1.5 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white text-xs font-bold shadow-sm transition">
-            Cargar Mes Completo
-          </button>
+       <button type="button" onclick="promptLoadFullMonth(null, true)" class="px-3.5 py-1.5 rounded-xl bg-[#C8102E] hover:bg-[#9E0B22] text-white text-xs font-bold shadow-sm transition">
+  Generar Reporte del Mes Completo
+</button>
         </div>
         
         <!-- Panel de Filtros y Acciones -->
@@ -790,8 +785,20 @@
 
         <!-- Bloque 1: Tarjetas KPI Principales y Canales -->
         <div id="report-section-kpis" class="space-y-6">
-        <!-- 4 Tarjetas KPI Principales -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print-break-inside-avoid">
+        <!-- 5 Tarjetas KPI Principales -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 print-break-inside-avoid">
+
+          <!-- KPI 0: Total Atendidos Hoy (Asesor: propias | Admin: general + propias) -->
+          <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between gap-1.5 mb-2">
+                <span id="kpi-today-label" class="text-xs font-bold text-slate-500 uppercase tracking-wider">Atendidos Hoy</span>
+                <span id="kpi-today-scope-badge" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700">Hoy</span>
+              </div>
+              <p id="kpi-today-attentions" class="text-3xl font-black text-slate-900">0</p>
+            </div>
+            <p id="kpi-today-breakdown" class="text-xs text-slate-500 mt-3 font-semibold truncate">Fecha actual</p>
+          </div>
           
           <!-- KPI 1: Total de Atenciones del Mes + Meta 1000-1500 -->
           <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
@@ -1273,6 +1280,6 @@
   <!-- ===================================================================== -->
   <!-- LÓGICA DE APLICACIÓN, FIREBASE (AUTH + FIRESTORE) Y ANALÍTICA         -->
   <!-- ===================================================================== -->
-  <script type="module" src="./app.js?v=20"></script>
+  <script type="module" src="./app.js?v=29"></script>
 </body>
 </html>
